@@ -1104,9 +1104,9 @@ mod tests {
         x = m.iter_post().map(pair_deref).collect();
         assert_eq!(x, vec![(-1,-1), (0,0), (2,2), (1,1), 
                            (4,4), (8,8), (6,6), (5,5), (3,3)]);
-//        test process crashes if this is included?
+//        test process crashes w/ illegal instruction
 //        x = m.iter_post().rev().map(pair_deref).collect();
-//        assert_eq!(x, vec![(3,3), (5,5), (6,6), (4,4),
+//        assert_eq!(x, vec![(3,3), (5,5), (6,6), (8,8), (4,4),
 //                           (1,1), (2,2), (0,0), (-1,-1)]);
     }
 
