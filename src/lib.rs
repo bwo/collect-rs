@@ -63,6 +63,7 @@ pub mod iter;
 pub mod blist;
 pub mod enum_set;
 pub mod immut_slist;
+pub mod immut_rbtree;
 pub mod interval_heap;
 pub mod lru_cache;
 
