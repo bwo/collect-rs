@@ -1123,18 +1123,41 @@ mod tests {
         x = m1.iter().rev().map(pair_deref).collect();
         assert_eq!(x, vec![(10,10), (9,9), (7,7), (4,4), (3,3), 
                            (2,2), (0,0), (-2, -2), (-3, -3)]);
+
+        x = m2.iter().map(pair_deref).collect();
+        assert_eq!(x, vec![(-2, -2), (0, 0), (1, 1), (2, 2), (3, 3),
+                           (4, 4), (5,5), (7, 7), (9, 9)]);
+        x = m2.iter().rev().map(pair_deref).collect();
+        assert_eq!(x, vec![(9,9), (7,7), (5,5), (4,4), (3,3),
+                           (2,2), (1,1), (0,0), (-2,-2)]);
+
         x = m1.iter_pre().map(pair_deref).collect();
         assert_eq!(x, vec![(3, 3), (0, 0), (-2, -2), (-3, -3),
                            (2, 2), (7, 7), (4, 4), (9, 9), (10, 10)]);
         x = m1.iter_pre().rev().map(pair_deref).collect();
         assert_eq!(x, vec![(10, 10), (9, 9), (4, 4), (7, 7), (2, 2),
                            (-3, -3), (-2, -2), (0, 0), (3, 3)]);
+
+        x = m2.iter_pre().map(pair_deref).collect();
+        assert_eq!(x, vec![(3,3), (0,0), (-2, -2), (2,2), (1,1), (7,7),
+                           (4,4), (5,5), (9,9)]);
+        x = m2.iter_pre().rev().map(pair_deref).collect();
+        assert_eq!(x, vec![(9,9), (5,5), (4,4), (7,7), (1,1), (2,2),
+                           (-2,-2), (0,0), (3,3)]);
+        
         x = m1.iter_post().map(pair_deref).collect();
         assert_eq!(x, vec![(-3, -3), (-2, -2), (2, 2), (0, 0), (4, 4),
                            (10, 10), (9, 9), (7, 7), (3, 3)]);
         x = m1.iter_post().rev().map(pair_deref).collect();
         assert_eq!(x, vec![(3, 3), (7, 7), (9, 9), (10, 10), (4, 4),
                            (0, 0), (2, 2), (-2, -2), (-3, -3)]);
+
+        x = m2.iter_post().map(pair_deref).collect();
+        assert_eq!(x, vec![(-2,-2), (1,1), (2,2), (0,0), (5,5), 
+                           (4,4), (9,9), (7,7), (3,3)]);
+        x = m2.iter_post().rev().map(pair_deref).collect();
+        assert_eq!(x, vec![(3,3), (7,7), (9,9), (4,4), (5,5), (0,0),
+                           (2,2), (1,1), (-2,-2)]);
     }
 
     #[test]
@@ -1249,6 +1272,16 @@ mod tests {
                 m = m.insert(k, v);
                 assert_eq!(m.len(), cnt);
                 check_structure(&m.tree);
+            }
+        }
+        for _ in range(0u, 100) {
+            let root = m.zipper().entry().map(|(&k,_)| k);
+            match root {
+                None => (),
+                Some(k) => {
+                    m = m.remove(&k);
+                    check_structure(&m.tree)
+                }
             }
         }
     }
