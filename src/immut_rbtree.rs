@@ -836,21 +836,16 @@ impl<'a,K:Ord,V> Z<'a,K,V> {
             match self.left() {
                 None => {
                     match self.right() {
-                        None => match self.up() {
-                            None => None,
-                            Some((u, d)) => {
-                                let mut came_from = d;
-                                let mut z = u;
-                                loop {
-                                    if came_from == Dir::Left && z.can_go(Dir::Right) {
-                                        return z.right()
-                                    } 
-                                    match z.up() {
-                                        None => return None,
-                                        Some((u,d)) => {
-                                            came_from = d;
-                                            z = u;
-                                        }
+                        None => {
+                            let mut u = self.up();
+                            loop {
+                                match u {
+                                    None => return None,
+                                    Some((uu, Dir::Right)) => u = uu.up(),
+                                    Some((uu, _)) => {
+                                        if uu.can_go(Dir::Right) {
+                                            return uu.right()
+                                        } else { u = uu.up() }
                                     }
                                 }
                             }
@@ -869,9 +864,11 @@ impl<'a,K:Ord,V> Z<'a,K,V> {
                     loop {
                         match z.left() {
                             None => return Some(z),
-                            Some(l) => match l.dirmost_child(Dir::Right) {
-                                None => z = l,
-                                Some(r) => z = r
+                            Some(l) => {
+                                z = l;
+                                while let Some(r) = z.right() {
+                                    z = r
+                                }
                             }
                         }
                     }
@@ -1093,29 +1090,51 @@ mod tests {
 
     #[test]
     fn test_orders() {
-        let v = &[-1,0,2,3,5,6,7];
+        let v = &[-2,0,2,3,4,7,9];
         let m = gen_map(v);
-        let m1 = m.insert(-2,-2).insert(10,10);
-        let m2 = m.insert(1,1).insert(8,8);
+        let m1 = m.insert(-3,-3).insert(10,10);
+        let m2 = m.insert(1,1).insert(5,5);
+
+        /*
+          m1 is shaped like (keys only):
+
+                       3
+                     /   \
+                    0     7
+                   / \   / \
+                 -2   2 4   9
+                 /           \
+               -3             10
+
+          m2 is shaped like:
+
+                       3
+                     /   \
+                    0     7
+                   / \   / \
+                 -2   2 4   9
+                     /   \     
+                    1     5
+        */
         
         let mut x : Vec<(int, int)> = m1.iter().map(pair_deref).collect();
-        assert_eq!(x, vec![(-2,-2), (-1,-1), (0,0), (2,2), (3,3),
-                           (5,5), (6,6), (7,7), (10,10)]);
+        assert_eq!(x, vec![(-3, -3), (-2, -2), (0, 0), (2, 2), (3, 3),
+                           (4, 4), (7, 7), (9, 9), (10, 10)]);
         x = m1.iter().rev().map(pair_deref).collect();
-        assert_eq!(x, vec![(10,10), (7,7), (6,6), (5,5), (3,3), 
-                           (2,2), (0,0), (-1,-1), (-2, -2)]);
+        assert_eq!(x, vec![(10,10), (9,9), (7,7), (4,4), (3,3), 
+                           (2,2), (0,0), (-2, -2), (-3, -3)]);
         x = m1.iter_pre().map(pair_deref).collect();
-        assert_eq!(x, vec![(3,3), (0,0), (-1,-1), (-2,-2), (2,2),
-                           (6,6), (5,5), (7,7), (10,10)]);
+        assert_eq!(x, vec![(3, 3), (0, 0), (-2, -2), (-3, -3),
+                           (2, 2), (7, 7), (4, 4), (9, 9), (10, 10)]);
         x = m1.iter_pre().rev().map(pair_deref).collect();
-        assert_eq!(x, vec![(10,10), (7,7), (5,5), (6,6),
-                           (2,2), (-2,-2), (-1,-1), (0,0), (3,3)]);
+        assert_eq!(x, vec![(10, 10), (9, 9), (4, 4), (7, 7), (2, 2),
+                           (-3, -3), (-2, -2), (0, 0), (3, 3)]);
         x = m1.iter_post().map(pair_deref).collect();
-        assert_eq!(x, vec![(-2,-2), (-1,-1), (2,2), (0,0), (5,5), (10,10),
-                           (7,7),  (6,6), (3,3)]);
+        assert_eq!(x, vec![(-3, -3), (-2, -2), (2, 2), (0, 0), (4, 4),
+                           (10, 10), (9, 9), (7, 7), (3, 3)]);
         x = m1.iter_post().rev().map(pair_deref).collect();
-        assert_eq!(x, vec![(3,3), (6,6), (7,7), (10,10),
-                           (5,5), (0,0), (2,2), (-1,-1), (-2,-2)]);
+        assert_eq!(x, vec![(3, 3), (7, 7), (9, 9), (10, 10), (4, 4),
+                           (0, 0), (2, 2), (-2, -2), (-3, -3)]);
     }
 
     #[test]
