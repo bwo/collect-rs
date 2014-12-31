@@ -22,7 +22,6 @@ macro_rules! opt_or {
     }
 }
 
-
 pub struct ImmutRbTree<K,V> {
     tree: ImmutRbTree_<K,V>
 }
@@ -1027,6 +1026,7 @@ mod tests {
     use super::ImmutRbTree_;
     use std::rand::Rng;
     use std::rand;
+    
     macro_rules! opt_eq {
         ($e:expr, $t:expr) => {
             {
@@ -1284,5 +1284,92 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod bench {
+    use test::{Bencher, black_box};
+    use test;
+    use std::rand::{weak_rng, Rng};
+    use super::ImmutRbTree;
+
+    #[bench]
+    fn bench_insert(b: &mut Bencher) {
+        let mut m = ImmutRbTree::new();
+        let mut cur = 0i;
+        b.iter(|| {
+            m = m.insert(cur, cur);
+            cur += 1;
+        })
+    }
+
+    fn bench_iter(b: &mut Bencher, size: uint) {
+        let mut m = ImmutRbTree::<uint,uint>::new();
+        let mut rng = weak_rng();
+        for _ in range(0, size) {
+            m = m.insert(rng.gen(), rng.gen())
+        };
+
+        b.iter(|| {
+            for entry in m.iter() {
+                black_box(entry)
+            }
+        })
+    }
+    
+    #[bench]
+    pub fn iter_20(b: &mut Bencher) {
+        bench_iter(b, 20);
+    }
+    
+    #[bench]
+    pub fn iter_1000(b: &mut Bencher) {
+        bench_iter(b, 1000);
+    }
+
+    fn insert_rand_n(b: &mut Bencher, n: uint) {
+        let mut m = ImmutRbTree::<uint, uint>::new();
+        let mut rng = weak_rng();
+        for i in range(0, n) {
+            m = m.insert(rng.gen::<uint>() % n, i)
+        }
+        b.iter(|| {
+            let k = rng.gen::<uint>() % n;
+            m = m.insert(k,k).remove(&k)
+        })
+    }
+
+    fn insert_seq_n(b: &mut Bencher, n: uint) {
+        let mut m = ImmutRbTree::<uint, uint>::new();
+        for i in range(0u, n) {
+            m = m.insert(i*2, i*2);
+        }
+
+        let mut i = 1;
+        b.iter(|| {
+            m = m.insert(i, i).remove(&i);
+            i = (i + 2) % n;
+        })
+    }
+
+    #[bench]
+    pub fn insert_rand_100(b: &mut Bencher) {
+        insert_rand_n(b,100);
+    }
+
+    #[bench]
+    pub fn insert_seq_100(b: &mut Bencher) {
+        insert_seq_n(b, 100);
+    }
+
+    #[bench]
+    pub fn insert_rand_10_000(b: &mut Bencher) {
+        insert_rand_n(b, 10_000);
+    }
+
+    #[bench]
+    pub fn insert_seq_10_000(b: &mut Bencher) {
+        insert_seq_n(b, 10_000);
     }
 }
