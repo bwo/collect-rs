@@ -1,4 +1,6 @@
 use std::borrow::BorrowFrom;
+use std::cmp::Ordering;
+use std::cmp::Ordering::{Greater, Less, Equal};
 use std::rc::{Rc};
 use std;
 use std::iter;
@@ -31,7 +33,7 @@ pub struct Entry<K,V> {
     v: V
 }
 
-#[deriving(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Dir { Left, Right }
 impl Dir {
     pub fn turnaround(self) -> Dir {
@@ -39,7 +41,7 @@ impl Dir {
     }
 }
 
-#[deriving(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Order { In, Pre, Post }
 
 pub struct Zipper<'a, K:'a, V:'a> {
@@ -96,7 +98,8 @@ fn mapsnd<'a, K:Ord, V>(i: Items<'a, K, V>) -> Values<'a, K, V> {
     i.map(snd as fn((&'a K, &'a V)) -> &'a V)
 }
 
-impl<'a, K:Ord, V> Iterator<(&'a K, &'a V)> for Items<'a, K, V> {
+impl<'a, K:Ord, V> Iterator for Items<'a, K, V> {
+    type Item = (&'a K, &'a V);
     fn next(&mut self) -> Option<(&'a K, &'a V)> {
         let o = self.order;
         self.next_item(o, Dir::Right)
@@ -106,7 +109,7 @@ impl<'a, K:Ord, V> Iterator<(&'a K, &'a V)> for Items<'a, K, V> {
     }
 }
 
-impl<'a, K:Ord, V> DoubleEndedIterator<(&'a K, &'a V)> for Items<'a, K, V> {
+impl<'a, K:Ord, V> DoubleEndedIterator for Items<'a, K, V> {
     fn next_back(&mut self) -> Option<(&'a K, &'a V)> {
         let o = self.order;
         self.next_item(o, Dir::Left)
@@ -225,8 +228,8 @@ impl <K:Ord,V> ImmutRbTree<K,V> {
     }
 }
 
-impl<K:Ord,V> FromIterator<(K,V)> for ImmutRbTree<K,V> {
-    fn from_iter<I: Iterator<(K,V)>>(mut iterator: I) -> ImmutRbTree<K,V> {
+impl<K:Ord,V> iter::FromIterator<(K,V)> for ImmutRbTree<K,V> {
+    fn from_iter<I: Iterator<Item=(K,V)>>(mut iterator: I) -> ImmutRbTree<K,V> {
         let mut m = ImmutRbTree::new();
         for (k,v) in iterator {
             m = m.insert(k,v);
@@ -345,7 +348,7 @@ impl<'a, K:Ord, V> Zipper<'a, K, V> {
     }
 }
 
-#[deriving(Clone, Copy, Eq, PartialEq, Show)]
+#[derive(Clone, Copy, Eq, PartialEq, Show)]
 enum Color {
     R, B, BB, NB
 }
@@ -376,7 +379,7 @@ enum ImmutRbTree_<K,V> {
     Node(Color,Rc<ImmutRbTree_<K,V>>,Rc<Entry<K,V>>,Rc<ImmutRbTree_<K,V>>,uint)
 }
 
-// using "deriving(Clone)" places spurious Clone constraings on K and V.
+// using "derive(Clone)" places spurious Clone constraings on K and V.
 impl<K,V> Clone for ImmutRbTree_<K,V> {
     fn clone(&self) -> ImmutRbTree_<K,V> {
         match *self {
@@ -483,14 +486,14 @@ impl<K:Ord,V> ImmutRbTree_<K,V> {
     fn insert_helper(&self, k: K, v: V) -> ImmutRbTree_<K,V> {
         match *self {
             BlackLeaf => {
-                let e = &Rc::new(BlackLeaf);
-                Node(R, e.clone(), Rc::new(Entry{k: k, v: v}), e.clone(), 1)
+                let e = Rc::new(BlackLeaf);
+                Node(R, e.clone(), Rc::new(Entry{k: k, v: v}), e, 1)
             },
             DoubleBlackLeaf => panic!("Unexpected color in insert_helper!"),
             Node(ref color, ref l, ref e, ref r, ref sz) => {
                 match k.cmp(&e.k) {
                     Less => balance(*color, &Rc::new(l.insert_helper(k, v)), e, r),
-                    Greater => balance(color.clone(), l, e, &Rc::new(r.insert_helper(k, v))),
+                    Greater => balance(*color, l, e, &Rc::new(r.insert_helper(k, v))),
                     Equal => Node(*color, l.clone(), 
                                   Rc::new(Entry {k: k, v: v}), r.clone(), *sz) 
                 }
