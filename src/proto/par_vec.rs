@@ -8,6 +8,7 @@ use std::fmt::Error as FmtError;
 use std::iter::range_inclusive;
 use std::sync::Arc;
 use std::mem;
+use std::ops;
 
 /// A vector that can be operated on concurrently via non-overlapping slices.
 ///
@@ -27,21 +28,21 @@ impl<T: Send + Sync> ParVec<T> {
             .map(|slice|
                 ParSlice {
                     _vec: data.clone(),
-                    data: unsafe { mem::transmute(slice) },                
+                    data: unsafe { mem::transmute(slice) },
                 }
             ).collect();
- 
+
         let par_vec = ParVec {
             data: data,
         };
 
         (par_vec, par_slices)
-    }    
-        
+    }
+
     /// Take the inner `Vec` if there are no slices remaining.
     /// Returns `Err(self)` if there are still slices out there.
     pub fn into_inner_opt(self) -> Result<Vec<T>, ParVec<T>> {
-        // Unwrap if we hold a unique reference 
+        // Unwrap if we hold a unique reference
         // (we don't use weak refs so ignore those)
         if arc::strong_count(&self.data) == 1 {
             let vec_ptr: &mut Vec<T> = unsafe { mem::transmute(&*self.data) };
@@ -57,7 +58,7 @@ impl<T: Send + Sync> ParVec<T> {
             match self.into_inner_opt() {
                 Ok(vec) => return vec,
                 Err(new_self) => self = new_self,
-            } 
+            }
         }
     }
 }
@@ -71,12 +72,12 @@ fn sub_slices<T>(parent: &[T], slice_count: uint) -> Vec<&[T]> {
     for curr in range_inclusive(1, slice_count).rev() {
         let slice_len = (len - start) / curr;
         let end = min(start + slice_len, len);
- 
+
         slices.push(parent.slice(start, end));
-        start += slice_len;          
+        start += slice_len;
     }
 
-    slices        
+    slices
 }
 
 /// A slice of `ParVec` that can be sent to another task for processing.
@@ -89,22 +90,24 @@ pub struct ParSlice<T: Send> {
     data: &'static mut [T],
 }
 
-impl<T: Send> Deref<[T]> for ParSlice<T> {
+impl<T: Send> ops::Deref for ParSlice<T> {
+    type Target = [T];
+
     fn deref<'a>(&'a self) -> &'a [T] {
-        self.data    
-    }    
+        self.data
+    }
 }
 
-impl<T: Send> DerefMut<[T]> for ParSlice<T> {
+impl<T: Send> ops::DerefMut for ParSlice<T> {
     fn deref_mut<'a>(&'a mut self) -> &'a mut [T] {
         self.data
-    }    
+    }
 }
 
 impl<T: Send> Show for ParSlice<T> where T: Show {
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        write!(f, "{}", self.data)  
-    } 
+        write!(f, "{}", self.data)
+    }
 }
 
 #[cfg(test)]
@@ -113,20 +116,20 @@ mod test {
     use self::test::Bencher;
     use super::ParVec;
     use std::mem;
-    use std::rand::{task_rng, Rng};
+    use std::rand::{thread_rng, Rng};
     use std::iter::range_inclusive;
-    
+
     const TEST_SLICES: uint = 8;
     const TEST_MAX: u32 = 1000;
 
     #[test]
     fn test_unwrap_safely() {
-        let (vec, slices) = ParVec::new([5u, ..TEST_MAX as uint].to_vec(), TEST_SLICES);
+        let (vec, slices) = ParVec::new([5u; TEST_MAX as uint].to_vec(), TEST_SLICES);
         mem::drop(slices);
 
         let vec = vec.into_inner();
 
-        assert_eq!(&*vec, [5u, ..TEST_MAX as uint].as_slice());                            
+        assert_eq!(&*vec, [5u; TEST_MAX as uint].as_slice());
     }
 
     #[test]
@@ -144,14 +147,14 @@ mod test {
             let _: Vec<(u32, Vec<u32>)> = vec.iter()
                 .map(|&x| (x, get_prime_factors(x)))
                 .collect();
-        });            
+        });
     }
 
     #[bench]
     fn par_prime_factors_1000(b: &mut Bencher) {
         use std::sync::TaskPool;
 
-        let mut rng = task_rng();
+        let mut rng = thread_rng();
         let pool = TaskPool::new(TEST_SLICES);
 
         b.iter(|| {
@@ -165,7 +168,7 @@ mod test {
             let (par_vec, par_slices) = ParVec::new(vec, TEST_SLICES);
 
             for mut slice in par_slices.into_iter() {
-                pool.execute(move || 
+                pool.execute(move ||
                     for pair in slice.iter_mut() {
                         let (x, ref mut x_primes) = *pair;
                         *x_primes = get_prime_factors(x);
@@ -178,9 +181,9 @@ mod test {
             vec.sort();
         });
     }
-     
+
     fn get_prime_factors(x: u32) -> Vec<u32> {
-        range(1, x).filter(|&y| x % y == 0 && is_prime(y)).collect()   
+        range(1, x).filter(|&y| x % y == 0 && is_prime(y)).collect()
     }
 
     fn is_prime(x: u32) -> bool {
@@ -191,11 +194,10 @@ mod test {
         if x & 1 == 0 { return false; }
 
         for i in range_step(3, x, 2) {
-            if x % i == 0 { return false; }            
+            if x % i == 0 { return false; }
         }
 
-        true          
+        true
     }
 
 }
-

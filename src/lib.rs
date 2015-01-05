@@ -25,6 +25,9 @@
 #![feature(unboxed_closures)]
 #![feature(globs)]
 #![feature(macro_rules)]
+#![feature(slicing_syntax)]
+#![feature(associated_types)]
+#![feature(old_orphan_check)]
 
 #[cfg(test)] extern crate test;
 extern crate core;
@@ -58,6 +61,7 @@ mod trie;
 
 // publics
 
+pub mod compare;
 pub mod iter;
 
 pub mod blist;

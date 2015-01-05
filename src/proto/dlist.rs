@@ -1,7 +1,8 @@
+use std::cmp::Ordering;
 use std::kinds::marker::NoCopy;
 use std::{ptr, mem};
 use std::iter;
-use std::fmt::{mod, Show};
+use std::fmt::{self, Show};
 use std::hash::{Hash, Writer};
 
 // FIXME(Gankro): Although the internal interface we have here is *safer* than std's DList,
@@ -212,33 +213,33 @@ impl<T> DList<T> {
     ///
     /// Panics if the index is greater than the length of the list.
     #[inline]
-    pub fn insert(&mut self, mut index: uint, elem: T) {
+    pub fn insert(&mut self, index: uint, elem: T) {
         assert!(index <= self.len(), "index out of bounds");
         let mut cursor = self.cursor();
-        while index > 0 { cursor.next(); index -= 1; }
+        cursor.seek_forward(index);
         cursor.insert(elem);
     }
 
     /// Removes the element at the given index. Returns None if the index is out of bounds.
     #[inline]
-    pub fn remove(&mut self, mut index: uint) -> Option<T> {
+    pub fn remove(&mut self, index: uint) -> Option<T> {
         if index >= self.len() {
             None
         } else {
             let mut cursor = self.cursor();
-            while index > 0 { cursor.next(); index -= 1; }
+            cursor.seek_forward(index);
             cursor.remove()
         }
     }
 
     /// Splits the list into two lists at the given index. Returns the right side of the split.
     /// Returns an empty list if index is out of bounds.
-    pub fn split_at(&mut self, mut index: uint) -> DList<T> {
+    pub fn split_at(&mut self, index: uint) -> DList<T> {
         if index >= self.len() {
             DList::new()
         } else {
             let mut cursor = self.cursor();
-            while index > 0 { cursor.next(); index -= 1; }
+            cursor.seek_forward(index);
             cursor.split()
         }
     }
@@ -251,9 +252,9 @@ impl<T> DList<T> {
     }
 
     /// Inserts the given list at the given index. The old list will be empty afterwards.
-    pub fn splice(&mut self, mut index: uint, other: &mut DList<T>) {
+    pub fn splice(&mut self, index: uint, other: &mut DList<T>) {
         let mut cursor = self.cursor();
-        while index > 0 { cursor.next(); index -= 1; }
+        cursor.seek_forward(index);
         cursor.splice(other);
     }
 
@@ -289,28 +290,28 @@ impl<T> DList<T> {
 
     /// Provides a forward iterator.
     #[inline]
-    pub fn iter<'a>(&'a self) -> Items<'a, T> {
-        Items{nelem: self.len(), head: &self.head, tail: &self.tail}
+    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
+        Iter{nelem: self.len(), head: &self.head, tail: &self.tail}
     }
 
     /// Provides a forward iterator with mutable references.
     #[inline]
-    pub fn iter_mut<'a>(&'a mut self) -> MutItems<'a, T> {
+    pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, T> {
         let head_raw = match self.head.as_mut() {
             Some(head) => Raw::some(&mut **head),
             None => Raw::none(),
         };
-        MutItems{
+        IterMut{
             nelem: self.len(),
             head: head_raw,
             tail: self.tail.clone(),
         }
     }
 
-    /// Consumes the list into an iterator yielding elements by.elem.
+    /// Consumes the list into an iterator yielding elements by value.
     #[inline]
-    pub fn into_iter(self) -> MoveItems<T> {
-        MoveItems{list: self}
+    pub fn into_iter(self) -> IntoIter<T> {
+        IntoIter{list: self}
     }
 
 }
@@ -530,31 +531,42 @@ impl<'a, T> Cursor<'a, T> {
             }
         }
     }
+
+    /// Calls `next` the specified number of times.
+    pub fn seek_forward(&mut self, by: uint) {
+        for _ in range(0, by) { self.next(); }
+    }
+
+    /// Calls `prev` the specified number of times.
+    pub fn seek_backward(&mut self, by: uint) {
+        for _ in range(0, by) { self.prev(); }
+    }
 }
 
 
 /// An iterator over references to the items of a `DList`.
-#[deriving(Clone)]
-pub struct Items<'a, T:'a> {
+#[derive(Clone)]
+pub struct Iter<'a, T:'a> {
     head: &'a Link<T>,
     tail: &'a Raw<T>,
     nelem: uint,
 }
 
 /// An iterator over mutable references to the items of a `DList`.
-pub struct MutItems<'a, T:'a> {
+pub struct IterMut<'a, T:'a> {
     head: Raw<T>,
     tail: Raw<T>,
     nelem: uint,
 }
 
 /// An iterator over mutable references to the items of a `DList`.
-#[deriving(Clone)]
-pub struct MoveItems<T> {
+#[derive(Clone)]
+pub struct IntoIter<T> {
     list: DList<T>
 }
 
-impl<'a, A> Iterator<&'a A> for Items<'a, A> {
+impl<'a, A> Iterator for Iter<'a, A> {
+    type Item = &'a A;
     #[inline]
     fn next(&mut self) -> Option<&'a A> {
         if self.nelem == 0 {
@@ -573,7 +585,7 @@ impl<'a, A> Iterator<&'a A> for Items<'a, A> {
     }
 }
 
-impl<'a, A> DoubleEndedIterator<&'a A> for Items<'a, A> {
+impl<'a, A> DoubleEndedIterator for Iter<'a, A> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a A> {
         if self.nelem == 0 {
@@ -587,9 +599,10 @@ impl<'a, A> DoubleEndedIterator<&'a A> for Items<'a, A> {
     }
 }
 
-impl<'a, A> ExactSizeIterator<&'a A> for Items<'a, A> {}
+impl<'a, A> ExactSizeIterator for Iter<'a, A> {}
 
-impl<'a, A> Iterator<&'a mut A> for MutItems<'a, A> {
+impl<'a, A> Iterator for IterMut<'a, A> {
+    type Item = &'a mut A;
     #[inline]
     fn next(&mut self) -> Option<&'a mut A> {
         if self.nelem == 0 {
@@ -614,7 +627,7 @@ impl<'a, A> Iterator<&'a mut A> for MutItems<'a, A> {
     }
 }
 
-impl<'a, A> DoubleEndedIterator<&'a mut A> for MutItems<'a, A> {
+impl<'a, A> DoubleEndedIterator for IterMut<'a, A> {
     #[inline]
     fn next_back(&mut self) -> Option<&'a mut A> {
         if self.nelem == 0 {
@@ -631,9 +644,10 @@ impl<'a, A> DoubleEndedIterator<&'a mut A> for MutItems<'a, A> {
     }
 }
 
-impl<'a, A> ExactSizeIterator<&'a mut A> for MutItems<'a, A> {}
+impl<'a, A> ExactSizeIterator for IterMut<'a, A> {}
 
-impl<A> Iterator<A> for MoveItems<A> {
+impl<A> Iterator for IntoIter<A> {
+    type Item = A;
     #[inline]
     fn next(&mut self) -> Option<A> { self.list.pop_front() }
 
@@ -643,7 +657,7 @@ impl<A> Iterator<A> for MoveItems<A> {
     }
 }
 
-impl<A> DoubleEndedIterator<A> for MoveItems<A> {
+impl<A> DoubleEndedIterator for IntoIter<A> {
     #[inline]
     fn next_back(&mut self) -> Option<A> { self.list.pop_back() }
 }
@@ -655,8 +669,8 @@ impl<T> Drop for DList<T> {
     }
 }
 
-impl<A> FromIterator<A> for DList<A> {
-    fn from_iter<T: Iterator<A>>(iterator: T) -> DList<A> {
+impl<A> iter::FromIterator<A> for DList<A> {
+    fn from_iter<T: Iterator<Item=A>>(iterator: T) -> DList<A> {
         let mut ret = DList::new();
         ret.extend(iterator);
         ret
@@ -664,7 +678,7 @@ impl<A> FromIterator<A> for DList<A> {
 }
 
 impl<A> Extend<A> for DList<A> {
-    fn extend<T: Iterator<A>>(&mut self, mut iterator: T) {
+    fn extend<T: Iterator<Item=A>>(&mut self, mut iterator: T) {
         for elt in iterator { self.push_back(elt); }
     }
 }
@@ -1176,7 +1190,7 @@ mod bench{
 
     #[bench]
     fn bench_collect_into(b: &mut test::Bencher) {
-        let v = &[0i, ..64];
+        let v = &[0i; 64];
         b.iter(|| {
             let _: DList<int> = v.iter().map(|x| *x).collect();
         })
@@ -1218,7 +1232,7 @@ mod bench{
 
     #[bench]
     fn bench_iter(b: &mut test::Bencher) {
-        let v = &[0i, ..128];
+        let v = &[0i; 128];
         let m: DList<int> = v.iter().map(|&x|x).collect();
         b.iter(|| {
             assert!(m.iter().count() == 128);
@@ -1226,7 +1240,7 @@ mod bench{
     }
     #[bench]
     fn bench_iter_mut(b: &mut test::Bencher) {
-        let v = &[0i, ..128];
+        let v = &[0i; 128];
         let mut m: DList<int> = v.iter().map(|&x|x).collect();
         b.iter(|| {
             assert!(m.iter_mut().count() == 128);
@@ -1234,7 +1248,7 @@ mod bench{
     }
     #[bench]
     fn bench_iter_rev(b: &mut test::Bencher) {
-        let v = &[0i, ..128];
+        let v = &[0i; 128];
         let m: DList<int> = v.iter().map(|&x|x).collect();
         b.iter(|| {
             assert!(m.iter().rev().count() == 128);
@@ -1242,7 +1256,7 @@ mod bench{
     }
     #[bench]
     fn bench_iter_mut_rev(b: &mut test::Bencher) {
-        let v = &[0i, ..128];
+        let v = &[0i; 128];
         let mut m: DList<int> = v.iter().map(|&x|x).collect();
         b.iter(|| {
             assert!(m.iter_mut().rev().count() == 128);

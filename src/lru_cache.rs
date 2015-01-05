@@ -331,7 +331,7 @@ impl<K: Hash + Eq, V> LruCache<K, V> {
 }
 
 impl<K: Hash + Eq, V> Extend<(K, V)> for LruCache<K, V> {
-    fn extend<T: Iterator<(K, V)>>(&mut self, mut iter: T) {
+    fn extend<T: Iterator<Item=(K, V)>>(&mut self, mut iter: T) {
         for (k, v) in iter{
             self.insert(k, v);
         }
@@ -358,6 +358,10 @@ impl<A: fmt::Show + Hash + Eq, B: fmt::Show> fmt::Show for LruCache<A, B> {
         write!(f, r"}}")
     }
 }
+
+unsafe impl<K: Send, V: Send> Send for LruCache<K, V> {}
+
+unsafe impl<K: Sync, V: Sync> Sync for LruCache<K, V> {}
 
 #[unsafe_destructor]
 impl<K, V> Drop for LruCache<K, V> {

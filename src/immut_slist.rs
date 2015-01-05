@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+use std::iter;
 use std::rc::{try_unwrap, Rc};
 use std::hash::{Writer, Hash};
 use std;
@@ -14,8 +16,8 @@ impl<T> Node<T> {
 }
 
 /// An iterator over the items of an ImmutSList
-#[deriving(Clone)]
-pub struct Items<'a, T: 'a> {
+#[derive(Clone)]
+pub struct Iter<'a, T: 'a> {
     head: Option<&'a Node<T>>,
     nelem: uint,
 }
@@ -86,8 +88,8 @@ impl<T> ImmutSList<T> {
     }
 
     /// Returns an iterator over references to the elements of the list in order
-    pub fn iter <'a> (&'a self) -> Items<'a, T> {
-        Items{ head: self.front.as_ref().map(|x| &**x), nelem: self.len() }
+    pub fn iter <'a> (&'a self) -> Iter<'a, T> {
+        Iter{ head: self.front.as_ref().map(|x| &**x), nelem: self.len() }
     }
 
     pub fn len (&self) -> uint {
@@ -122,7 +124,8 @@ impl<T> Drop for ImmutSList<T> {
 }
 
 
-impl<'a, T> Iterator<&'a T> for Items<'a, T> {
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = &'a T;
     fn next(&mut self) -> Option<&'a T> {
         match self.head.take() {
             None => None,
@@ -139,8 +142,8 @@ impl<'a, T> Iterator<&'a T> for Items<'a, T> {
     }
 }
 
-impl<T> FromIterator<T> for ImmutSList<T> {
-    fn from_iter<I: Iterator<T>>(mut iterator: I) -> ImmutSList<T> {
+impl<T> iter::FromIterator<T> for ImmutSList<T> {
+    fn from_iter<I: Iterator<Item=T>>(mut iterator: I) -> ImmutSList<T> {
         let mut list = ImmutSList::new();
         for elem in iterator {
             list = list.append(elem);
@@ -370,7 +373,7 @@ mod tests {
 
     #[bench]
     fn bench_collect_into(b: &mut test::Bencher) {
-        let v = &[0i, ..64];
+        let v = &[0i; 64];
         b.iter(|| {
             let _: ImmutSList<int> = v.iter().map(|x| *x).collect();
         })
@@ -394,7 +397,7 @@ mod tests {
 
     #[bench]
     fn bench_iter(b: &mut test::Bencher) {
-        let v = &[0i, ..128];
+        let v = &[0i; 128];
         let m: ImmutSList<int> = v.iter().map(|&x|x).collect();
         b.iter(|| {
             assert!(m.iter().count() == 128);

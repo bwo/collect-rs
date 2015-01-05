@@ -12,18 +12,18 @@
 
 pub use self::Entry::*;
 use self::TrieNode::*;
+use std::cmp::Ordering;
 use std::default::Default;
 use std::fmt;
 use std::fmt::Show;
 use std::mem::zeroed;
 use std::mem;
-use std::ops::{Slice, SliceMut};
+use std::ops::{self, Slice, SliceMut};
 use std::uint;
 use std::iter;
 use std::ptr;
 use std::hash::{Writer, Hash};
 
-use std::slice::{Iter, IterMut};
 use std::slice;
 
 // FIXME(conventions): implement bounded iterators
@@ -87,7 +87,7 @@ const MAX_DEPTH: uint = uint::BITS / SHIFT;
 /// map.clear();
 /// assert!(map.is_empty());
 /// ```
-#[deriving(Clone)]
+#[derive(Clone)]
 pub struct TrieMap<T> {
     root: InternalNode<T>,
     length: uint
@@ -100,12 +100,12 @@ pub struct TrieMap<T> {
 struct InternalNode<T> {
     // The number of direct children which are external (i.e. that store a value).
     count: uint,
-    children: [TrieNode<T>, ..SIZE]
+    children: [TrieNode<T>; SIZE]
 }
 
 // Each child of an InternalNode may be internal, in which case nesting continues,
 // external (containing a value), or empty
-#[deriving(Clone)]
+#[derive(Clone)]
 enum TrieNode<T> {
     Internal(Box<InternalNode<T>>),
     External(uint, T),
@@ -224,8 +224,8 @@ impl<T> TrieMap<T> {
     /// }
     /// ```
     #[unstable = "matches collection reform specification, waiting for dust to settle"]
-    pub fn iter<'a>(&'a self) -> Entries<'a, T> {
-        let mut iter = unsafe {Entries::new()};
+    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
+        let mut iter = unsafe {Iter::new()};
         iter.stack[0] = self.root.children.iter();
         iter.length = 1;
         iter.remaining_min = self.length;
@@ -252,8 +252,8 @@ impl<T> TrieMap<T> {
     /// assert_eq!(map.get(&3), Some(&-3));
     /// ```
     #[unstable = "matches collection reform specification, waiting for dust to settle"]
-    pub fn iter_mut<'a>(&'a mut self) -> MutEntries<'a, T> {
-        let mut iter = unsafe {MutEntries::new()};
+    pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, T> {
+        let mut iter = unsafe {IterMut::new()};
         iter.stack[0] = self.root.children.iter_mut();
         iter.length = 1;
         iter.remaining_min = self.length;
@@ -545,8 +545,8 @@ macro_rules! bound {
 impl<T> TrieMap<T> {
     // If `upper` is true then returns upper_bound else returns lower_bound.
     #[inline]
-    fn bound<'a>(&'a self, key: uint, upper: bool) -> Entries<'a, T> {
-        bound!(Entries, self = self,
+    fn bound<'a>(&'a self, key: uint, upper: bool) -> Iter<'a, T> {
+        bound!(Iter, self = self,
                key = key, is_upper = upper,
                slice_from = slice_from_or_fail, iter = iter,
                mutability = )
@@ -565,7 +565,7 @@ impl<T> TrieMap<T> {
     /// assert_eq!(map.lower_bound(5).next(), Some((6, &"c")));
     /// assert_eq!(map.lower_bound(10).next(), None);
     /// ```
-    pub fn lower_bound<'a>(&'a self, key: uint) -> Entries<'a, T> {
+    pub fn lower_bound<'a>(&'a self, key: uint) -> Iter<'a, T> {
         self.bound(key, false)
     }
 
@@ -582,13 +582,13 @@ impl<T> TrieMap<T> {
     /// assert_eq!(map.upper_bound(5).next(), Some((6, &"c")));
     /// assert_eq!(map.upper_bound(10).next(), None);
     /// ```
-    pub fn upper_bound<'a>(&'a self, key: uint) -> Entries<'a, T> {
+    pub fn upper_bound<'a>(&'a self, key: uint) -> Iter<'a, T> {
         self.bound(key, true)
     }
     // If `upper` is true then returns upper_bound else returns lower_bound.
     #[inline]
-    fn bound_mut<'a>(&'a mut self, key: uint, upper: bool) -> MutEntries<'a, T> {
-        bound!(MutEntries, self = self,
+    fn bound_mut<'a>(&'a mut self, key: uint, upper: bool) -> IterMut<'a, T> {
+        bound!(IterMut, self = self,
                key = key, is_upper = upper,
                slice_from = slice_from_or_fail_mut, iter = iter_mut,
                mutability = mut)
@@ -615,7 +615,7 @@ impl<T> TrieMap<T> {
     /// assert_eq!(map.get(&4), Some(&"changed"));
     /// assert_eq!(map.get(&6), Some(&"changed"));
     /// ```
-    pub fn lower_bound_mut<'a>(&'a mut self, key: uint) -> MutEntries<'a, T> {
+    pub fn lower_bound_mut<'a>(&'a mut self, key: uint) -> IterMut<'a, T> {
         self.bound_mut(key, false)
     }
 
@@ -640,13 +640,13 @@ impl<T> TrieMap<T> {
     /// assert_eq!(map.get(&4), Some(&"b"));
     /// assert_eq!(map.get(&6), Some(&"changed"));
     /// ```
-    pub fn upper_bound_mut<'a>(&'a mut self, key: uint) -> MutEntries<'a, T> {
+    pub fn upper_bound_mut<'a>(&'a mut self, key: uint) -> IterMut<'a, T> {
         self.bound_mut(key, true)
     }
 }
 
-impl<T> FromIterator<(uint, T)> for TrieMap<T> {
-    fn from_iter<Iter: Iterator<(uint, T)>>(iter: Iter) -> TrieMap<T> {
+impl<T> iter::FromIterator<(uint, T)> for TrieMap<T> {
+    fn from_iter<Iter: Iterator<Item=(uint, T)>>(iter: Iter) -> TrieMap<T> {
         let mut map = TrieMap::new();
         map.extend(iter);
         map
@@ -654,7 +654,7 @@ impl<T> FromIterator<(uint, T)> for TrieMap<T> {
 }
 
 impl<T> Extend<(uint, T)> for TrieMap<T> {
-    fn extend<Iter: Iterator<(uint, T)>>(&mut self, mut iter: Iter) {
+    fn extend<Iter: Iterator<Item=(uint, T)>>(&mut self, mut iter: Iter) {
         for (k, v) in iter {
             self.insert(k, v);
         }
@@ -669,14 +669,16 @@ impl<S: Writer, T: Hash<S>> Hash<S> for TrieMap<T> {
     }
 }
 
-impl<T> Index<uint, T> for TrieMap<T> {
+impl<T> ops::Index<uint> for TrieMap<T> {
+    type Output = T;
     #[inline]
     fn index<'a>(&'a self, i: &uint) -> &'a T {
         self.get(i).expect("key not present")
     }
 }
 
-impl<T> IndexMut<uint, T> for TrieMap<T> {
+impl<T> ops::IndexMut<uint> for TrieMap<T> {
+    type Output = T;
     #[inline]
     fn index_mut<'a>(&'a mut self, i: &uint) -> &'a mut T {
         self.get_mut(i).expect("key not present")
@@ -849,7 +851,7 @@ struct SearchStack<'a, T: 'a> {
     map: &'a mut TrieMap<T>,
     length: uint,
     key: uint,
-    items: [*mut TrieNode<T>, ..MAX_DEPTH]
+    items: [*mut TrieNode<T>; MAX_DEPTH]
 }
 
 impl<'a, T> SearchStack<'a, T> {
@@ -859,7 +861,7 @@ impl<'a, T> SearchStack<'a, T> {
             map: map,
             length: 0,
             key: key,
-            items: [ptr::null_mut(), ..MAX_DEPTH]
+            items: [ptr::null_mut(); MAX_DEPTH]
         }
     }
 
@@ -1078,8 +1080,8 @@ impl<'a, T> VacantEntry<'a, T> {
 }
 
 /// A forward iterator over a map.
-pub struct Entries<'a, T:'a> {
-    stack: [slice::Iter<'a, TrieNode<T>>, .. MAX_DEPTH],
+pub struct Iter<'a, T:'a> {
+    stack: [slice::Iter<'a, TrieNode<T>>; MAX_DEPTH],
     length: uint,
     remaining_min: uint,
     remaining_max: uint
@@ -1087,19 +1089,19 @@ pub struct Entries<'a, T:'a> {
 
 /// A forward iterator over the key-value pairs of a map, with the
 /// values being mutable.
-pub struct MutEntries<'a, T:'a> {
-    stack: [slice::IterMut<'a, TrieNode<T>>, .. MAX_DEPTH],
+pub struct IterMut<'a, T:'a> {
+    stack: [slice::IterMut<'a, TrieNode<T>>; MAX_DEPTH],
     length: uint,
     remaining_min: uint,
     remaining_max: uint
 }
 
 /// A forward iterator over the keys of a map.
-pub type Keys<'a, T> = iter::Map<(uint, &'a T), uint, Entries<'a, T>, fn((uint, &'a T)) -> uint>;
+pub type Keys<'a, T> = iter::Map<(uint, &'a T), uint, Iter<'a, T>, fn((uint, &'a T)) -> uint>;
 
 /// A forward iterator over the values of a map.
 pub type Values<'a, T> =
-    iter::Map<(uint, &'a T), &'a T, Entries<'a, T>, fn((uint, &'a T)) -> &'a T>;
+    iter::Map<(uint, &'a T), &'a T, Iter<'a, T>, fn((uint, &'a T)) -> &'a T>;
 
 // FIXME #5846: see `addr!` above.
 macro_rules! item { ($i:item) => {$i}}
@@ -1139,7 +1141,8 @@ macro_rules! iterator_impl {
             }
         }
 
-        item!(impl<'a, T> Iterator<(uint, &'a $($mut_)* T)> for $name<'a, T> {
+        item!(impl<'a, T> Iterator for $name<'a, T> {
+                type Item = (uint, &'a $($mut_)* T);
                 // you might wonder why we're not even trying to act within the
                 // rules, and are just manipulating raw pointers like there's no
                 // such thing as invalid pointers and memory unsafety. The
@@ -1215,8 +1218,8 @@ macro_rules! iterator_impl {
     }
 }
 
-iterator_impl! { Entries, iter = iter, mutability = }
-iterator_impl! { MutEntries, iter = iter_mut, mutability = mut }
+iterator_impl! { Iter, iter = iter, mutability = }
+iterator_impl! { IterMut, iter = iter_mut, mutability = mut }
 
 #[cfg(test)]
 mod test {
@@ -1766,7 +1769,6 @@ mod test {
 
 #[cfg(test)]
 mod bench {
-    use std::prelude::*;
     use std::rand::{weak_rng, Rng};
     use test::{Bencher, black_box};
 
@@ -1840,26 +1842,26 @@ mod bench {
 
     #[bench]
     fn bench_insert_large(b: &mut Bencher) {
-        let mut m = TrieMap::<[uint, .. 10]>::new();
+        let mut m = TrieMap::<[uint; 10]>::new();
         let mut rng = weak_rng();
 
         b.iter(|| {
             for _ in range(0u, MAP_SIZE) {
-                m.insert(rng.gen(), [1, .. 10]);
+                m.insert(rng.gen(), [1; 10]);
             }
         });
     }
 
     #[bench]
     fn bench_insert_large_entry(b: &mut Bencher) {
-        let mut m = TrieMap::<[uint, .. 10]>::new();
+        let mut m = TrieMap::<[uint; 10]>::new();
         let mut rng = weak_rng();
 
         b.iter(|| {
             for _ in range(0u, MAP_SIZE) {
                 match m.entry(rng.gen()) {
-                    Occupied(mut e) => { e.set([1, ..10]); },
-                    Vacant(e) => { e.set([1, ..10]); }
+                    Occupied(mut e) => { e.set([1; 10]); },
+                    Vacant(e) => { e.set([1; 10]); }
                 }
             }
         });
@@ -1867,13 +1869,13 @@ mod bench {
 
     #[bench]
     fn bench_insert_large_low_bits(b: &mut Bencher) {
-        let mut m = TrieMap::<[uint, .. 10]>::new();
+        let mut m = TrieMap::<[uint; 10]>::new();
         let mut rng = weak_rng();
 
         b.iter(|| {
             for _ in range(0u, MAP_SIZE) {
                 // only have the last few bits set.
-                m.insert(rng.gen::<uint>() & 0xff_ff, [1, .. 10]);
+                m.insert(rng.gen::<uint>() & 0xff_ff, [1; 10]);
             }
         });
     }
