@@ -53,7 +53,7 @@ pub struct Items<'a, K: 'a, V:'a>
     front: Option<Zipper<'a, K, V>>,
     back: Option<Zipper<'a, K, V>>,
     order: Order,
-    remaining: uint
+    remaining: usize
 }
 
 impl<'a, K:Ord, V> Items<'a, K, V> {
@@ -104,7 +104,7 @@ impl<'a, K:Ord, V> Iterator for Items<'a, K, V> {
         let o = self.order;
         self.next_item(o, Dir::Right)
     }
-    fn size_hint(&self) -> (uint, Option<uint>) {
+    fn size_hint(&self) -> (usize, Option<usize>) {
         (self.remaining, Some(self.remaining))
     }
 }
@@ -128,7 +128,7 @@ impl <K:Ord,V> ImmutRbTree<K,V> {
     }
 
     #[inline]
-    pub fn len(&self) -> uint {
+    pub fn len(&self) -> usize {
         self.tree.len()
     }
 
@@ -138,13 +138,13 @@ impl <K:Ord,V> ImmutRbTree<K,V> {
     }
 
     #[inline]
-    pub fn get<Sized? Q>(&self, key: &Q) -> Option<&V>
+    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<&V>
         where Q: BorrowFrom<K> + Ord {
         self.tree.get(key)
     }
 
     #[inline]
-    pub fn contains_key<Sized? Q>(&self, key: &Q) -> bool
+    pub fn contains_key<Q: ?Sized>(&self, key: &Q) -> bool
         where Q: BorrowFrom<K> + Ord {
         self.tree.contains_key(key)
     }
@@ -155,7 +155,7 @@ impl <K:Ord,V> ImmutRbTree<K,V> {
     }
 
     #[inline]
-    pub fn remove<Sized? Q>(&self, k: &Q) -> ImmutRbTree<K,V> 
+    pub fn remove<Q: ?Sized>(&self, k: &Q) -> ImmutRbTree<K,V> 
         where Q: BorrowFrom<K> + Ord {
         ImmutRbTree { tree: self.tree.remove(k) }
     }
@@ -238,7 +238,7 @@ impl<K:Ord,V> iter::FromIterator<(K,V)> for ImmutRbTree<K,V> {
     }
 }
 
-impl<K:Ord+std::fmt::Show, V:std::fmt::Show> std::fmt::Show for ImmutRbTree<K,V> {
+impl<K:Ord+std::fmt::String, V:std::fmt::String> std::fmt::String for ImmutRbTree<K,V> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         try!(write!(f, "{{"));
         for (i,(k,v)) in self.iter().enumerate() {
@@ -248,6 +248,17 @@ impl<K:Ord+std::fmt::Show, V:std::fmt::Show> std::fmt::Show for ImmutRbTree<K,V>
         write!(f, "}}")
     }
 }
+impl<K:Ord+std::fmt::String, V:std::fmt::String> std::fmt::Show for ImmutRbTree<K,V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        try!(write!(f, "{{"));
+        for (i,(k,v)) in self.iter().enumerate() {
+            if i != 0 { try!(write!(f, ", ")); }
+            try!(write!(f, "{}: {}", k, v));
+        }
+        write!(f, "}}")
+    }
+}
+
 
 impl<K:PartialEq+Ord, V: PartialEq> PartialEq for ImmutRbTree<K, V> {
     fn eq(&self, other: &ImmutRbTree<K, V>) -> bool {
@@ -376,7 +387,7 @@ impl Color {
 enum ImmutRbTree_<K,V> {
     BlackLeaf,
     DoubleBlackLeaf,
-    Node(Color,Rc<ImmutRbTree_<K,V>>,Rc<Entry<K,V>>,Rc<ImmutRbTree_<K,V>>,uint)
+    Node(Color,Rc<ImmutRbTree_<K,V>>,Rc<Entry<K,V>>,Rc<ImmutRbTree_<K,V>>,usize)
 }
 
 // using "derive(Clone)" places spurious Clone constraings on K and V.
@@ -399,7 +410,7 @@ impl<K:Ord,V> ImmutRbTree_<K,V> {
     }
     
     #[inline]
-    fn len(&self) -> uint {
+    fn len(&self) -> usize {
         match *self {
             Node(_,_,_,_,size) => size,
             _ => 0
@@ -414,7 +425,7 @@ impl<K:Ord,V> ImmutRbTree_<K,V> {
         }
     }
 
-    fn get<Sized? Q>(&self, key: &Q) -> Option<&V> 
+    fn get<Q: ?Sized>(&self, key: &Q) -> Option<&V> 
         where Q: BorrowFrom<K> + Ord
     {
         match *self {
@@ -431,7 +442,7 @@ impl<K:Ord,V> ImmutRbTree_<K,V> {
     }
 
     #[inline]
-    fn contains_key<Sized? Q>(&self, key: &Q) -> bool 
+    fn contains_key<Q: ?Sized>(&self, key: &Q) -> bool 
         where Q: BorrowFrom<K> + Ord
     {
         self.get(key).is_some()
@@ -441,7 +452,7 @@ impl<K:Ord,V> ImmutRbTree_<K,V> {
         self.insert_helper(k, v).blacken_insert()
     }
 
-    fn remove<Sized? Q>(&self, k: &Q) -> ImmutRbTree_<K,V> 
+    fn remove<Q: ?Sized>(&self, k: &Q) -> ImmutRbTree_<K,V> 
         where Q: BorrowFrom<K> + Ord
     {
         self.remove_helper(k).blacken_remove()
@@ -501,7 +512,7 @@ impl<K:Ord,V> ImmutRbTree_<K,V> {
         }
     }
 
-    fn remove_helper<Sized? Q>(&self, k: &Q) -> ImmutRbTree_<K,V> 
+    fn remove_helper<Q: ?Sized>(&self, k: &Q) -> ImmutRbTree_<K,V> 
         where Q: BorrowFrom<K> + Ord
     {
         match *self {
@@ -1233,7 +1244,7 @@ mod tests {
         opt_eq!(e, v);
     }
 
-    fn check_child(t: &ImmutRbTree_<int, int>, parent: Color) -> uint {
+    fn check_child(t: &ImmutRbTree_<int, int>, parent: Color) -> usize {
         match t {
             &DoubleBlackLeaf => {assert!(false, "Double black leaf!"); 0},
             &BlackLeaf => 1,
@@ -1307,8 +1318,8 @@ mod bench {
         })
     }
 
-    fn bench_iter(b: &mut Bencher, size: uint) {
-        let mut m = ImmutRbTree::<uint,uint>::new();
+    fn bench_iter(b: &mut Bencher, size: usize) {
+        let mut m = ImmutRbTree::<usize,usize>::new();
         let mut rng = weak_rng();
         for _ in range(0, size) {
             m = m.insert(rng.gen(), rng.gen())
@@ -1316,7 +1327,7 @@ mod bench {
 
         b.iter(|| {
             for entry in m.iter() {
-                black_box(entry)
+                black_box(entry);
             }
         })
     }
@@ -1331,20 +1342,20 @@ mod bench {
         bench_iter(b, 1000);
     }
 
-    fn insert_rand_n(b: &mut Bencher, n: uint) {
-        let mut m = ImmutRbTree::<uint, uint>::new();
+    fn insert_rand_n(b: &mut Bencher, n: usize) {
+        let mut m = ImmutRbTree::<usize, usize>::new();
         let mut rng = weak_rng();
         for i in range(0, n) {
-            m = m.insert(rng.gen::<uint>() % n, i)
+            m = m.insert(rng.gen::<usize>() % n, i)
         }
         b.iter(|| {
-            let k = rng.gen::<uint>() % n;
+            let k = rng.gen::<usize>() % n;
             m = m.insert(k,k).remove(&k)
         })
     }
 
-    fn insert_seq_n(b: &mut Bencher, n: uint) {
-        let mut m = ImmutRbTree::<uint, uint>::new();
+    fn insert_seq_n(b: &mut Bencher, n: usize) {
+        let mut m = ImmutRbTree::<usize, usize>::new();
         for i in range(0u, n) {
             m = m.insert(i*2, i*2);
         }
