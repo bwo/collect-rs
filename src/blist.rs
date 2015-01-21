@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
-use std::collections::{dlist, ring_buf, DList, RingBuf};
+use std::collections::{ring_buf, RingBuf};
 use std::iter;
 use std::fmt;
-use std::mem;
-use std::hash::{Hash, Writer};
+use std::hash::{Hash, Hasher, Writer};
 use std::num::Int;
 use traverse::Traversal;
+use proto::dlist::{self, DList};
 
 /// A skeleton implementation of a BList, based on the [Space-Efficient Linked List]
 /// (http://opendatastructures.org/ods-python/3_3_SEList_Space_Efficient_.html) described in
@@ -23,8 +23,8 @@ use traverse::Traversal;
 #[derive(Clone)]
 pub struct BList<T> {
     list: DList<RingBuf<T>>,
-    b: uint,
-    len: uint,
+    b: usize,
+    len: usize,
 }
 
 // Constructors
@@ -37,7 +37,7 @@ impl<T> BList<T> {
     }
 
     /// Creates a new BList with the specified B.
-    pub fn with_b(b: uint) -> BList<T> {
+    pub fn with_b(b: usize) -> BList<T> {
         assert!(b > 1, "B must be > 1");
         BList {
             list: DList::new(),
@@ -142,7 +142,7 @@ impl<T> BList<T> {
     }
 
     /// Gets the number of elements in the list.
-    pub fn len(&self) -> uint {
+    pub fn len(&self) -> usize {
         self.len
     }
 
@@ -205,28 +205,33 @@ impl<T> BList<T> {
     /// effort to preserve the node-size lower-bound invariant. This can have negative effects
     /// on the effeciency of the resulting list, but is otherwise much faster than a proper
     /// invariant-preserving `append`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lists have a different value of `B`.
     pub fn append_lazy(&mut self, other: &mut BList<T>) {
-        let list = mem::replace(&mut other.list, DList::new());
-        self.list.append(list);
+        assert!(self.b == other.b);
+        self.list.append(&mut other.list);
+        self.len += other.len;
+        other.len = 0;
     }
-
 }
 
 
 
 /// Makes a new block for insertion in the list.
-fn make_block<T>(b: uint) -> RingBuf<T> {
+fn make_block<T>(b: usize) -> RingBuf<T> {
      RingBuf::with_capacity(block_max(b))
 }
 
 /// Gets the largest a block is allowed to become.
-fn block_max(b: uint) -> uint {
+fn block_max(b: usize) -> usize {
     b + 1
 }
 
 /// Gets the smallest a (non-end) block is allowed to become.
 #[allow(unused)]
-fn block_min(b: uint) -> uint {
+fn block_min(b: usize) -> usize {
     b - 1
 }
 
@@ -262,7 +267,7 @@ struct AbsIter<DListIter, RingBufIter> {
     list_iter: DListIter,
     left_block_iter: Option<RingBufIter>,
     right_block_iter: Option<RingBufIter>,
-    len: uint,
+    len: usize,
 }
 
 impl<A,
@@ -310,7 +315,7 @@ impl<A,
         }
     }
 
-    fn size_hint(&self) -> (uint, Option<uint>) {
+    fn size_hint(&self) -> (usize, Option<usize>) {
         (self.len, Some(self.len))
     }
 }
@@ -352,7 +357,7 @@ impl<A,
 impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
     fn next(&mut self) -> Option<&'a T> { self.0.next() }
-    fn size_hint(&self) -> (uint, Option<uint>) { self.0.size_hint() }
+    fn size_hint(&self) -> (usize, Option<usize>) { self.0.size_hint() }
 }
 impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
     fn next_back(&mut self) -> Option<&'a T> { self.0.next_back() }
@@ -362,7 +367,7 @@ impl<'a, T> ExactSizeIterator for Iter<'a, T> {}
 impl<'a, T> Iterator for IterMut<'a, T> {
     type Item = &'a mut T;
     fn next(&mut self) -> Option<&'a mut T> { self.0.next() }
-    fn size_hint(&self) -> (uint, Option<uint>) { self.0.size_hint() }
+    fn size_hint(&self) -> (usize, Option<usize>) { self.0.size_hint() }
 }
 impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
     fn next_back(&mut self) -> Option<&'a mut T> { self.0.next_back() }
@@ -372,7 +377,7 @@ impl<'a, T> ExactSizeIterator for IterMut<'a, T> {}
 impl<T> Iterator for IntoIter<T> {
     type Item = T;
     fn next(&mut self) -> Option<T> { self.0.next() }
-    fn size_hint(&self) -> (uint, Option<uint>) { self.0.size_hint() }
+    fn size_hint(&self) -> (usize, Option<usize>) { self.0.size_hint() }
 }
 impl<T> DoubleEndedIterator for IntoIter<T> {
     fn next_back(&mut self) -> Option<T> { self.0.next_back() }
@@ -476,14 +481,14 @@ impl<A: fmt::Show> fmt::Show for BList<A> {
 
         for (i, e) in self.iter().enumerate() {
             if i != 0 { try!(write!(f, ", ")); }
-            try!(write!(f, "{}", *e));
+            try!(write!(f, "{:?}", *e));
         }
 
         write!(f, "]")
     }
 }
 
-impl<S: Writer, A: Hash<S>> Hash<S> for BList<A> {
+impl<S: Hasher+Writer, A: Hash<S>> Hash<S> for BList<A> {
     fn hash(&self, state: &mut S) {
         self.len().hash(state);
         for elt in self.iter() {
@@ -499,8 +504,8 @@ mod test {
     use super::BList;
     use std::hash;
 
-    fn generate_test() -> BList<int> {
-        list_from(&[0i,1,2,3,4,5,6])
+    fn generate_test() -> BList<i32> {
+        list_from(&[0,1,2,3,4,5,6])
     }
 
     fn list_from<T: Clone>(v: &[T]) -> BList<T> {
@@ -509,7 +514,7 @@ mod test {
 
     #[test]
     fn test_basic() {
-        let mut m: BList<Box<int>> = BList::new();
+        let mut m = BList::new();
         assert_eq!(m.pop_front(), None);
         assert_eq!(m.pop_back(), None);
         assert_eq!(m.pop_front(), None);
@@ -529,7 +534,7 @@ mod test {
         assert_eq!(m.pop_front(), Some(box 1));
 
         let mut n = BList::new();
-        n.push_front(2i);
+        n.push_front(2);
         n.push_front(3);
         {
             assert_eq!(n.front().unwrap(), &3);
@@ -551,11 +556,11 @@ mod test {
     fn test_iterator() {
         let m = generate_test();
         for (i, elt) in m.iter().enumerate() {
-            assert_eq!(i as int, *elt);
+            assert_eq!(i as i32, *elt);
         }
         let mut n = BList::new();
         assert_eq!(n.iter().next(), None);
-        n.push_front(4i);
+        n.push_front(4);
         let mut it = n.iter();
         assert_eq!(it.size_hint(), (1, Some(1)));
         assert_eq!(it.next().unwrap(), &4);
@@ -568,7 +573,7 @@ mod test {
     fn test_iterator_double_end() {
         let mut n = BList::new();
         assert_eq!(n.iter().next(), None);
-        n.push_front(4i);
+        n.push_front(4);
         n.push_front(5);
         n.push_front(6);
         let mut it = n.iter();
@@ -586,11 +591,11 @@ mod test {
     fn test_rev_iter() {
         let m = generate_test();
         for (i, elt) in m.iter().rev().enumerate() {
-            assert_eq!((6 - i) as int, *elt);
+            assert_eq!(6 - i as i32, *elt);
         }
         let mut n = BList::new();
         assert_eq!(n.iter().rev().next(), None);
-        n.push_front(4i);
+        n.push_front(4);
         let mut it = n.iter().rev();
         assert_eq!(it.size_hint(), (1, Some(1)));
         assert_eq!(it.next().unwrap(), &4);
@@ -603,13 +608,13 @@ mod test {
         let mut m = generate_test();
         let mut len = m.len();
         for (i, elt) in m.iter_mut().enumerate() {
-            assert_eq!(i as int, *elt);
+            assert_eq!(i as i32, *elt);
             len -= 1;
         }
         assert_eq!(len, 0);
         let mut n = BList::new();
         assert!(n.iter_mut().next().is_none());
-        n.push_front(4i);
+        n.push_front(4);
         n.push_back(5);
         let mut it = n.iter_mut();
         assert_eq!(it.size_hint(), (2, Some(2)));
@@ -623,7 +628,7 @@ mod test {
     fn test_iterator_mut_double_end() {
         let mut n = BList::new();
         assert!(n.iter_mut().next_back().is_none());
-        n.push_front(4i);
+        n.push_front(4);
         n.push_front(5);
         n.push_front(6);
         let mut it = n.iter_mut();
@@ -647,8 +652,8 @@ mod test {
         m.push_back(1);
         assert!(n == m);
 
-        let n = list_from(&[2i,3,4]);
-        let m = list_from(&[1i,2,3]);
+        let n = list_from(&[2,3,4]);
+        let m = list_from(&[1,2,3]);
         assert!(n != m);
     }
 
@@ -657,23 +662,23 @@ mod test {
       let mut x = BList::new();
       let mut y = BList::new();
 
-      assert!(hash::hash(&x) == hash::hash(&y));
+      assert!(hash::hash::<_, hash::SipHasher>(&x) == hash::hash::<_, hash::SipHasher>(&y));
 
-      x.push_back(1i);
+      x.push_back(1);
       x.push_back(2);
       x.push_back(3);
 
-      y.push_front(3i);
+      y.push_front(3);
       y.push_front(2);
       y.push_front(1);
 
-      assert!(hash::hash(&x) == hash::hash(&y));
+      assert!(hash::hash::<_, hash::SipHasher>(&x) == hash::hash::<_, hash::SipHasher>(&y));
     }
 
     #[test]
     fn test_ord() {
-        let n: BList<int> = list_from(&[]);
-        let m = list_from(&[1i,2,3]);
+        let n = list_from(&[]);
+        let m = list_from(&[1,2,3]);
         assert!(n < m);
         assert!(m > n);
         assert!(n <= n);
@@ -714,13 +719,43 @@ mod test {
 
     #[test]
     fn test_show() {
-        let list: BList<int> = range(0i, 10).collect();
-        assert!(list.to_string().as_slice() == "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]");
+        let list: BList<i32> = range(0, 10).collect();
+        assert_eq!(format!("{:?}", list), "[0i32, 1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32]");
 
         let list: BList<&str> = vec!["just", "one", "test", "more"].iter()
                                                                    .map(|&s| s)
                                                                    .collect();
-        assert!(list.to_string().as_slice() == "[just, one, test, more]");
+        assert_eq!(format!("{:?}", list), r#"["just", "one", "test", "more"]"#);
+    }
+
+    #[test]
+    fn test_append_lazy() {
+        let mut u = list_from(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+        let mut v = list_from(&[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110]);
+        let w = list_from(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+                            10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110]);
+        let x = list_from(&[]);
+
+        // Normal append
+        u.append_lazy(&mut v);
+        assert_eq!(u.len(), 22);
+        assert_eq!(v.len(), 0);
+        assert_eq!(u, w);
+        assert_eq!(v, x);
+
+        // no-op append
+        u.append_lazy(&mut v);
+        assert_eq!(u.len(), 22);
+        assert_eq!(v.len(), 0);
+        assert_eq!(u, w);
+        assert_eq!(v, x);
+
+        // append into empty
+        v.append_lazy(&mut u);
+        assert_eq!(v.len(), 22);
+        assert_eq!(u.len(), 0);
+        assert_eq!(v, w);
+        assert_eq!(u, x);
     }
 }
 
@@ -732,15 +767,15 @@ mod bench{
 
     #[bench]
     fn bench_collect_into(b: &mut test::Bencher) {
-        let v = &[0i; 64];
+        let v = &[0i32; 64];
         b.iter(|| {
-            let _: BList<int> = v.iter().map(|x| *x).collect();
+            let _: BList<i32> = v.iter().map(|x| *x).collect();
         })
     }
 
     #[bench]
     fn bench_push_front(b: &mut test::Bencher) {
-        let mut m: BList<int> = BList::new();
+        let mut m: BList<i32> = BList::new();
         b.iter(|| {
             m.push_front(0);
         })
@@ -748,7 +783,7 @@ mod bench{
 
     #[bench]
     fn bench_push_back(b: &mut test::Bencher) {
-        let mut m: BList<int> = BList::new();
+        let mut m: BList<i32> = BList::new();
         b.iter(|| {
             m.push_back(0);
         })
@@ -756,7 +791,7 @@ mod bench{
 
     #[bench]
     fn bench_push_back_pop_back(b: &mut test::Bencher) {
-        let mut m: BList<int> = BList::new();
+        let mut m: BList<i32> = BList::new();
         b.iter(|| {
             m.push_back(0);
             m.pop_back();
@@ -765,7 +800,7 @@ mod bench{
 
     #[bench]
     fn bench_push_front_pop_front(b: &mut test::Bencher) {
-        let mut m: BList<int> = BList::new();
+        let mut m: BList<i32> = BList::new();
         b.iter(|| {
             m.push_front(0);
             m.pop_front();
@@ -774,16 +809,16 @@ mod bench{
 
     #[bench]
     fn bench_iter(b: &mut test::Bencher) {
-        let v = &[0i; 128];
-        let m: BList<int> = v.iter().map(|&x|x).collect();
+        let v = &[0; 128];
+        let m: BList<i32> = v.iter().map(|&x|x).collect();
         b.iter(|| {
             assert!(m.iter().count() == 128);
         })
     }
     #[bench]
     fn bench_iter_mut(b: &mut test::Bencher) {
-        let v = &[0i; 128];
-        let mut m: BList<int> = v.iter().map(|&x|x).collect();
+        let v = &[0; 128];
+        let mut m: BList<i32> = v.iter().map(|&x|x).collect();
         b.iter(|| {
             assert!(m.iter_mut().count() == 128);
         })
@@ -791,16 +826,16 @@ mod bench{
 
     #[bench]
     fn bench_iter_rev(b: &mut test::Bencher) {
-        let v = &[0i; 128];
-        let m: BList<int> = v.iter().map(|&x|x).collect();
+        let v = &[0; 128];
+        let m: BList<i32> = v.iter().map(|&x|x).collect();
         b.iter(|| {
             assert!(m.iter().rev().count() == 128);
         })
     }
     #[bench]
     fn bench_iter_mut_rev(b: &mut test::Bencher) {
-        let v = &[0i; 128];
-        let mut m: BList<int> = v.iter().map(|&x|x).collect();
+        let v = &[0; 128];
+        let mut m: BList<i32> = v.iter().map(|&x|x).collect();
         b.iter(|| {
             assert!(m.iter_mut().rev().count() == 128);
         })
@@ -808,8 +843,8 @@ mod bench{
 
     #[bench]
     fn bench_trav(b: &mut test::Bencher) {
-        let v = &[0i; 128];
-        let m: BList<int> = v.iter().map(|&x|x).collect();
+        let v = &[0; 128];
+        let m: BList<i32> = v.iter().map(|&x|x).collect();
         b.iter(|| {
             assert!(m.traversal().count() == 128);
         })

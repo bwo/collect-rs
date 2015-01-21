@@ -33,14 +33,13 @@ use compare::{Compare, Natural};
 // FIXME: There may be a better algorithm for turning a vector into an
 // interval heap. Right now, this takes O(n log n) time, I think.
 
-
-fn is_root(x: uint) -> bool { x < 2 }
+fn is_root(x: usize) -> bool { x < 2 }
 
 /// Set LSB to zero for the "left" item index of a node.
-fn left(x: uint) -> uint { x & !1u }
+fn left(x: usize) -> usize { x & !1 }
 
 /// Returns index of "left" item of parent node.
-fn parent_left(x: uint) -> uint {
+fn parent_left(x: usize) -> usize {
     debug_assert!(!is_root(x));
     left((x - 2) / 2)
 }
@@ -175,7 +174,7 @@ impl<T: Ord> IntervalHeap<T> {
     /// assert!(heap.is_empty());
     /// assert!(heap.capacity() >= 5);
     /// ```
-    pub fn with_capacity(capacity: uint) -> IntervalHeap<T> {
+    pub fn with_capacity(capacity: usize) -> IntervalHeap<T> {
         IntervalHeap::with_capacity_and_comparator(capacity, Natural)
     }
 
@@ -187,7 +186,7 @@ impl<T: Ord> IntervalHeap<T> {
     /// ```rust
     /// use collect::IntervalHeap;
     ///
-    /// let heap = IntervalHeap::from_vec(vec![5u32, 1, 6, 4]);
+    /// let heap = IntervalHeap::from_vec(vec![5, 1, 6, 4]);
     /// assert_eq!(heap.len(), 4);
     /// assert_eq!(heap.get_min_max(), Some((&1, &6)));
     /// ```
@@ -204,7 +203,7 @@ impl<T, C: Compare<T>> IntervalHeap<T, C> {
 
     /// Returns an empty heap with the given capacity and ordered according to the given
     /// comparator.
-    pub fn with_capacity_and_comparator(capacity: uint, cmp: C) -> IntervalHeap<T, C> {
+    pub fn with_capacity_and_comparator(capacity: usize, cmp: C) -> IntervalHeap<T, C> {
         IntervalHeap { data: Vec::with_capacity(capacity), cmp: cmp }
     }
 
@@ -214,17 +213,21 @@ impl<T, C: Compare<T>> IntervalHeap<T, C> {
         for to in 2 .. vec.len() + 1 {
             interval_heap_push(vec.slice_to_mut(to), &cmp);
         }
-        IntervalHeap { data: vec, cmp: cmp }
+        let heap = IntervalHeap { data: vec, cmp: cmp };
+        debug_assert!(heap.is_valid());
+        heap
     }
 
     /// An iterator visiting all values in underlying vector,
     /// in arbitrary order.
     pub fn iter(&self) -> Iter<T> {
+        debug_assert!(self.is_valid());
         Iter(self.data.iter())
     }
 
     /// Returns a reference to the smallest item or None (if empty).
     pub fn get_min(&self) -> Option<&T> {
+        debug_assert!(self.is_valid());
         match self.data.len() {
             0 => None,
             _ => Some(&self.data[0])
@@ -233,6 +236,7 @@ impl<T, C: Compare<T>> IntervalHeap<T, C> {
 
     /// Returns a reference to the greatest item or None (if empty).
     pub fn get_max(&self) -> Option<&T> {
+        debug_assert!(self.is_valid());
         match self.data.len() {
             0 => None,
             1 => Some(&self.data[0]),
@@ -242,6 +246,7 @@ impl<T, C: Compare<T>> IntervalHeap<T, C> {
 
     /// Returns references to the smallest and greatest item or None (if empty).
     pub fn get_min_max(&self) -> Option<(&T, &T)> {
+        debug_assert!(self.is_valid());
         match self.data.len() {
             0 => None,
             1 => Some((&self.data[0],&self.data[0])),
@@ -251,7 +256,7 @@ impl<T, C: Compare<T>> IntervalHeap<T, C> {
 
     /// Returns the number of items the interval heap could hold
     /// without reallocation.
-    pub fn capacity(&self) -> uint {
+    pub fn capacity(&self) -> usize {
         self.data.capacity()
     }
 
@@ -262,14 +267,14 @@ impl<T, C: Compare<T>> IntervalHeap<T, C> {
     /// Note that the allocator may give the collection more space than it
     /// requests. Therefore capacity can not be relied upon to be precisely
     /// minimal. Prefer `reserve` if future insertions are expected.
-    pub fn reserve_exact(&mut self, additional: uint) {
+    pub fn reserve_exact(&mut self, additional: usize) {
         self.data.reserve_exact(additional);
     }
 
     /// Reserves capacity for at least `additional` more elements to be inserted
     /// in the `IntervalHeap`. The collection may reserve more space to avoid
     /// frequent reallocations.
-    pub fn reserve(&mut self, additional: uint) {
+    pub fn reserve(&mut self, additional: usize) {
         self.data.reserve(additional);
     }
 
@@ -280,7 +285,8 @@ impl<T, C: Compare<T>> IntervalHeap<T, C> {
 
     /// Removes the smallest item and returns it, or None if is empty.
     pub fn pop_min(&mut self) -> Option<T> {
-        match self.data.len() {
+        debug_assert!(self.is_valid());
+        let min = match self.data.len() {
             0 => None,
             1...2 => Some(self.data.swap_remove(0)),
             _ => {
@@ -288,25 +294,32 @@ impl<T, C: Compare<T>> IntervalHeap<T, C> {
                 update_min(self.data.as_mut_slice(), &self.cmp);
                 Some(res)
             }
-        }
+        };
+        debug_assert!(self.is_valid());
+        min
     }
 
     /// Removes the greatest item and returns it, or None if is empty.
     pub fn pop_max(&mut self) -> Option<T> {
-        match self.data.len() {
+        debug_assert!(self.is_valid());
+        let max = match self.data.len() {
             0...2 => self.data.pop(),
             _ => {
                 let res = self.data.swap_remove(1);
                 update_max(self.data.as_mut_slice(), &self.cmp);
                 Some(res)
             }
-        }
+        };
+        debug_assert!(self.is_valid());
+        max
     }
 
     /// Pushes an item onto the queue.
     pub fn push(&mut self, x: T) {
+        debug_assert!(self.is_valid());
         self.data.push(x);
         interval_heap_push(self.data.as_mut_slice(), &self.cmp);
+        debug_assert!(self.is_valid());
     }
 
     /// Consumes the `IntervalHeap` and returns the underlying vector
@@ -325,7 +338,7 @@ impl<T, C: Compare<T>> IntervalHeap<T, C> {
     }
 
     /// Returns the number of items in the interval heap
-    pub fn len(&self) -> uint {
+    pub fn len(&self) -> usize {
         self.data.len()
     }
 
@@ -337,6 +350,34 @@ impl<T, C: Compare<T>> IntervalHeap<T, C> {
     /// Drops all items from the queue.
     pub fn clear(&mut self) {
         self.data.clear();
+    }
+
+    /// Checks if the heap is valid.
+    ///
+    /// The heap is valid if:
+    ///
+    /// 1. It has fewer than two elements, OR
+    /// 2a. Each node's left element is less than or equal to its right element, AND
+    /// 2b. Each node's left element is greater than or equal to the left element of the
+    ///     node's parent, AND
+    /// 2c. Each node's right element is less than or equal to the right element of the
+    ///     node's parent
+    fn is_valid(&self) -> bool {
+        let mut nodes = self.data.chunks(2);
+
+        match nodes.next() {
+            Some([ref l, ref r]) => self.cmp.compares_le(l, r) && // 2a
+                nodes.enumerate().all(|(i, node)| {
+                    let p = i & !1;
+                    let l = &node[0];
+                    let r = node.last().unwrap();
+
+                    self.cmp.compares_le(l, r) &&              // 2a
+                    self.cmp.compares_ge(l, &self.data[p]) &&  // 2b
+                    self.cmp.compares_le(r, &self.data[p + 1]) // 2c
+                }),
+            _ => true, // 1
+        }
     }
 }
 
@@ -362,44 +403,23 @@ impl<T, C: Compare<T>> Extend<T> for IntervalHeap<T, C> {
 impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
     #[inline] fn next(&mut self) -> Option<&'a T> { self.0.next() }
-    #[inline] fn size_hint(&self) -> (uint, Option<uint>) { self.0.size_hint() }
-}
-
-#[cfg(test)]
-pub fn as_slice<T, C: Compare<T>>(x: &IntervalHeap<T, C>) -> &[T] {
-    x.data.as_slice()
+    #[inline] fn size_hint(&self) -> (usize, Option<usize>) { self.0.size_hint() }
 }
 
 #[cfg(test)]
 mod test {
-    use std::rand::{ thread_rng, Rng };
-    use super::{ IntervalHeap, as_slice };
-
-    fn is_interval_heap<T: Ord>(x: &[T]) -> bool {
-        if x.len() < 2 { return true; }
-        if x[1] < x[0] { return false; }
-        let mut ofs = 2;
-        while ofs < x.len() {
-            let ofz = ofs + (ofs + 1 < x.len()) as uint;
-            if x[ofz] < x[ofs] { return false; }
-            let parent = (ofs / 2 - 1) & !1u;
-            if x[ofs] < x[parent] { return false; }
-            if x[parent+1] < x[ofz] { return false; }
-            ofs += 2;
-        }
-        true
-    }
+    use std::rand::{thread_rng, Rng};
+    use super::IntervalHeap;
 
     #[test]
     fn fuzz_push_into_sorted_vec() {
         let mut rng = thread_rng();
         let mut tmp = Vec::with_capacity(100);
-        for _ in range(0, 100u) {
+        for _ in range(0, 100) {
             tmp.clear();
             let mut ih = IntervalHeap::from_vec(tmp);
-            for _ in range(0, 100u) {
+            for _ in range(0, 100) {
                 ih.push(rng.next_u32());
-                assert!(is_interval_heap(as_slice(&ih)));
             }
             tmp = ih.into_sorted_vec();
             for pair in tmp.windows(2) {
@@ -412,16 +432,15 @@ mod test {
     fn fuzz_pop_min() {
         let mut rng = thread_rng();
         let mut tmp = Vec::with_capacity(100);
-        for _ in range(0, 100u) {
+        for _ in range(0, 100) {
             tmp.clear();
             let mut ih = IntervalHeap::from_vec(tmp);
-            for _ in range(0, 100u) {
+            for _ in range(0, 100) {
                 ih.push(rng.next_u32());
             }
             let mut tmpx: Option<u32> = None;
             loop {
                 let tmpy = ih.pop_min();
-                assert!(is_interval_heap(as_slice(&ih)));
                 match (tmpx, tmpy) {
                     (_, None) => break,
                     (Some(x), Some(y)) => assert!(x <= y),
@@ -437,16 +456,15 @@ mod test {
     fn fuzz_pop_max() {
         let mut rng = thread_rng();
         let mut tmp = Vec::with_capacity(100);
-        for _ in range(0, 100u) {
+        for _ in range(0, 100) {
             tmp.clear();
             let mut ih = IntervalHeap::from_vec(tmp);
-            for _ in range(0, 100u) {
+            for _ in range(0, 100) {
                 ih.push(rng.next_u32());
             }
             let mut tmpx: Option<u32> = None;
             loop {
                 let tmpy = ih.pop_max();
-                assert!(is_interval_heap(as_slice(&ih)));
                 match (tmpx, tmpy) {
                     (_, None) => break,
                     (Some(x), Some(y)) => assert!(x >= y),
@@ -460,17 +478,43 @@ mod test {
 
     #[test]
     fn test_from_vec() {
-        let heap = IntervalHeap::<u32>::from_vec(vec![]);
+        let heap = IntervalHeap::<i32>::from_vec(vec![]);
         assert_eq!(heap.get_min_max(), None);
 
-        let heap = IntervalHeap::<u32>::from_vec(vec![2]);
+        let heap = IntervalHeap::from_vec(vec![2]);
         assert_eq!(heap.get_min_max(), Some((&2, &2)));
 
-        let heap = IntervalHeap::<u32>::from_vec(vec![2, 1]);
+        let heap = IntervalHeap::from_vec(vec![2, 1]);
         assert_eq!(heap.get_min_max(), Some((&1, &2)));
 
-        let heap = IntervalHeap::<u32>::from_vec(vec![2, 1, 3]);
+        let heap = IntervalHeap::from_vec(vec![2, 1, 3]);
         assert_eq!(heap.get_min_max(), Some((&1, &3)));
     }
-} // mod test
 
+    #[test]
+    fn test_is_valid() {
+        fn new(data: Vec<i32>) -> IntervalHeap<i32> {
+            IntervalHeap { data: data, cmp: ::compare::Natural }
+        }
+
+        assert!(new(vec![]).is_valid());
+        assert!(new(vec![1]).is_valid());
+        assert!(new(vec![1, 1]).is_valid());
+        assert!(new(vec![1, 5]).is_valid());
+        assert!(new(vec![1, 5, 1]).is_valid());
+        assert!(new(vec![1, 5, 1, 1]).is_valid());
+        assert!(new(vec![1, 5, 5]).is_valid());
+        assert!(new(vec![1, 5, 5, 5]).is_valid());
+        assert!(new(vec![1, 5, 2, 4]).is_valid());
+        assert!(new(vec![1, 5, 2, 4, 3]).is_valid());
+        assert!(new(vec![1, 5, 2, 4, 3, 3]).is_valid());
+
+        assert!(!new(vec![2, 1]).is_valid());       // violates 2a
+        assert!(!new(vec![1, 5, 4, 3]).is_valid()); // violates 2a
+        assert!(!new(vec![1, 5, 0]).is_valid());    // violates 2b
+        assert!(!new(vec![1, 5, 0, 5]).is_valid()); // violates 2b
+        assert!(!new(vec![1, 5, 6]).is_valid());    // violates 2c
+        assert!(!new(vec![1, 5, 1, 6]).is_valid()); // violates 2c
+        assert!(!new(vec![1, 5, 0, 6]).is_valid()); // violates 2b and 2c
+    }
+}

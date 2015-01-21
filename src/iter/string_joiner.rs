@@ -10,8 +10,8 @@ pub trait StringJoiner {
   /// ```rust
   /// use collect::iter::StringJoiner;
   ///
-  /// let vec = vec![1u,2,3];
-  /// assert_eq!(vec.iter().join(", ").as_slice(), "1, 2, 3");
+  /// let vec = vec![1,2,3];
+  /// assert_eq!(&*vec.iter().join(", "), "1, 2, 3");
   /// ```
   fn join(&mut self, sep: &str) -> String;
 }
@@ -35,9 +35,9 @@ impl<A: ToString, T: Iterator<Item=A>> StringJoiner for T {
 
 #[test]
 fn test_join() {
-  let many = vec![1u,2,3];
-  let one  = vec![1u];
-  let none: Vec<uint> = vec![];
+  let many = vec![1,2,3];
+  let one  = vec![1];
+  let none: Vec<usize> = vec![];
 
   assert_eq!(many.iter().join(", ").as_slice(), "1, 2, 3");
   assert_eq!( one.iter().join(", ").as_slice(), "1");

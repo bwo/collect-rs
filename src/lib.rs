@@ -19,15 +19,11 @@
 //! Note that anything include in collect-rs is theoretically a candidate for inclusion in
 //! libcollections. As such, this project is licensed under the same terms as Rust itself.
 
-
-#![feature(unsafe_destructor)]
-#![feature(default_type_params)]
+#![allow(unstable)]
+#![feature(box_syntax)]
+#![feature(old_impl_check)]
 #![feature(unboxed_closures)]
-#![feature(globs)]
-#![feature(macro_rules)]
-#![feature(slicing_syntax)]
-#![feature(associated_types)]
-#![feature(old_orphan_check)]
+#![feature(unsafe_destructor)]
 
 #[cfg(test)] extern crate test;
 extern crate core;
@@ -42,12 +38,12 @@ pub use blist::BList;
 pub use enum_set::EnumSet;
 pub use immut_slist::ImmutSList;
 pub use interval_heap::IntervalHeap;
+pub use linked_hash_map::LinkedHashMap;
 pub use lru_cache::LruCache;
 pub use tree_map::TreeMap;
 pub use tree_set::TreeSet;
 pub use trie_map::TrieMap;
 pub use trie_set::TrieSet;
-
 
 
 
@@ -68,6 +64,7 @@ pub mod blist;
 pub mod enum_set;
 pub mod immut_slist;
 pub mod interval_heap;
+pub mod linked_hash_map;
 pub mod lru_cache;
 
 pub mod tree_map {

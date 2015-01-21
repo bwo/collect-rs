@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 use std::iter;
 use std::rc::{try_unwrap, Rc};
-use std::hash::{Writer, Hash};
+use std::hash::{Hash, Hasher, Writer};
 use std;
 
 struct Node<T> {
@@ -19,13 +19,13 @@ impl<T> Node<T> {
 #[derive(Clone)]
 pub struct Iter<'a, T: 'a> {
     head: Option<&'a Node<T>>,
-    nelem: uint,
+    nelem: usize,
 }
 
 /// An immutable singly-linked list, as seen in basically every functional language
 pub struct ImmutSList<T> {
     front: Option<Rc<Node<T>>>,
-    length: uint,
+    length: usize,
 }
 
 impl<T> ImmutSList<T> {
@@ -56,7 +56,7 @@ impl<T> ImmutSList<T> {
     }
 
     /// Returns a copy of the list, with the first `n` elements removed
-    pub fn tailn (&self, n: uint) -> ImmutSList<T> {
+    pub fn tailn (&self, n: usize) -> ImmutSList<T> {
         if self.len() <= n {
             ImmutSList::new()
         } else {
@@ -78,7 +78,7 @@ impl<T> ImmutSList<T> {
     }
 
     /// Returns a copy of the list, with only the last `n` elements remaining
-    pub fn lastn (&self, n: uint) -> ImmutSList<T> {
+    pub fn lastn (&self, n: usize) -> ImmutSList<T> {
         if n >= self.length {
             self.clone()
         } else {
@@ -92,7 +92,7 @@ impl<T> ImmutSList<T> {
         Iter{ head: self.front.as_ref().map(|x| &**x), nelem: self.len() }
     }
 
-    pub fn len (&self) -> uint {
+    pub fn len (&self) -> usize {
         self.length
     }
 
@@ -137,7 +137,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
         }
     }
 
-    fn size_hint(&self) -> (uint, Option<uint>) {
+    fn size_hint(&self) -> (usize, Option<usize>) {
         (self.nelem, Some(self.nelem))
     }
 }
@@ -185,14 +185,14 @@ impl<T: std::fmt::Show> std::fmt::Show for ImmutSList<T> {
 
         for (i, e) in self.iter().enumerate() {
             if i != 0 { try!(write!(f, ", ")); }
-            try!(write!(f, "{}", *e));
+            try!(write!(f, "{:?}", *e));
         }
 
         write!(f, "]")
     }
 }
 
-impl<S: Writer, A: Hash<S>> Hash<S> for ImmutSList<A> {
+impl<S: Hasher+Writer, A: Hash<S>> Hash<S> for ImmutSList<A> {
     fn hash(&self, state: &mut S) {
         self.len().hash(state);
         for elt in self.iter() {
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn test_basic() {
-        let mut m: ImmutSList<Box<int>> = ImmutSList::new();
+        let mut m = ImmutSList::new();
         assert_eq!(m.head(), None);
         assert_eq!(m.tail().head(), None);
         m = m.append(box 1);
@@ -230,14 +230,14 @@ mod tests {
 
     #[test]
     fn test_tailn() {
-        let m = list_from(&[0i,1,2,3,4,5]);
+        let m = list_from(&[0,1,2,3,4,5]);
         assert_eq!(m.tailn(0), m);
         assert_eq!(m.tailn(3), m.tail().tail().tail());
     }
 
     #[test]
     fn test_last() {
-        let mut m = list_from(&[0i,1,2,3,4,5]);
+        let mut m = list_from(&[0,1,2,3,4,5]);
         assert_eq!(m.last().unwrap(), &5);
 
         m = ImmutSList::new();
@@ -246,15 +246,15 @@ mod tests {
 
     #[test]
     fn test_lastn() {
-        let m = list_from(&[0i,1,2,3,4,5]);
+        let m = list_from(&[0,1,2,3,4,5]);
         assert_eq!(m.lastn(0).head(), None);
         assert_eq!(m.lastn(8), m);
         assert_eq!(m.lastn(4), m.tail().tail());
     }
 
     #[cfg(test)]
-    fn generate_test() -> ImmutSList<int> {
-        list_from(&[0i,1,2,3,4,5,6])
+    fn generate_test() -> ImmutSList<i32> {
+        list_from(&[0,1,2,3,4,5,6])
     }
 
     #[cfg(test)]
@@ -266,11 +266,11 @@ mod tests {
     fn test_iterator() {
         let m = generate_test();
         for (i, elt) in m.iter().enumerate() {
-            assert_eq!(i as int, *elt);
+            assert_eq!(i as i32, *elt);
         }
         let mut n = ImmutSList::new();
         assert_eq!(n.iter().next(), None);
-        n = n.append(4i);
+        n = n.append(4);
         let mut it = n.iter();
         assert_eq!(it.size_hint(), (1, Some(1)));
         assert_eq!(it.next().unwrap(), &4);
@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn test_iterator_clone() {
         let mut n = ImmutSList::new();
-        n = n.append(1i).append(2).append(3);
+        n = n.append(1).append(2).append(3);
         let mut it = n.iter();
         it.next();
         let mut jt = it.clone();
@@ -299,8 +299,8 @@ mod tests {
         m = m.append(1);
         assert!(n == m);
 
-        let n = list_from(&[2i,3,4]);
-        let m = list_from(&[1i,2,3]);
+        let n = list_from(&[2,3,4]);
+        let m = list_from(&[1,2,3]);
         assert!(n != m);
     }
 
@@ -309,18 +309,18 @@ mod tests {
       let mut x = ImmutSList::new();
       let mut y = ImmutSList::new();
 
-      assert!(hash::hash(&x) == hash::hash(&y));
+      assert!(hash::hash::<_, hash::SipHasher>(&x) == hash::hash::<_, hash::SipHasher>(&y));
 
-      x = x.append(1i).append(2).append(3);
-      y = y.append(1i).append(4).tail().append(2).append(3);
+      x = x.append(1).append(2).append(3);
+      y = y.append(1).append(4).tail().append(2).append(3);
 
-      assert!(hash::hash(&x) == hash::hash(&y));
+      assert!(hash::hash::<_, hash::SipHasher>(&x) == hash::hash::<_, hash::SipHasher>(&y));
     }
 
     #[test]
     fn test_ord() {
-        let n: ImmutSList<int> = list_from(&[]);
-        let m = list_from(&[1i,2,3]);
+        let n = list_from(&[]);
+        let m = list_from(&[1,2,3]);
         assert!(n < m);
         assert!(m > n);
         assert!(n <= n);
@@ -361,27 +361,27 @@ mod tests {
 
     #[test]
     fn test_show() {
-        let list: ImmutSList<int> = range(0i, 10).rev().collect();
-        assert!(list.to_string().as_slice() == "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]");
+        let list: ImmutSList<i32> = range(0, 10).rev().collect();
+        assert_eq!(format!("{:?}", list), "[0i32, 1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32]");
 
         let list: ImmutSList<&str> = vec!["just", "one", "test", "more"].iter()
                                                                    .rev()
                                                                    .map(|&s| s)
                                                                    .collect();
-        assert!(list.to_string().as_slice() == "[just, one, test, more]");
+        assert_eq!(format!("{:?}", list), r#"["just", "one", "test", "more"]"#);
     }
 
     #[bench]
     fn bench_collect_into(b: &mut test::Bencher) {
-        let v = &[0i; 64];
+        let v = &[0i32; 64];
         b.iter(|| {
-            let _: ImmutSList<int> = v.iter().map(|x| *x).collect();
+            let _: ImmutSList<i32> = v.iter().map(|x| *x).collect();
         })
     }
 
     #[bench]
     fn bench_append(b: &mut test::Bencher) {
-        let mut m: ImmutSList<int> = ImmutSList::new();
+        let mut m: ImmutSList<i32> = ImmutSList::new();
         b.iter(|| {
             m = m.append(0);
         })
@@ -389,7 +389,7 @@ mod tests {
 
     #[bench]
     fn bench_append_tail(b: &mut test::Bencher) {
-        let mut m: ImmutSList<int> = ImmutSList::new();
+        let mut m: ImmutSList<i32> = ImmutSList::new();
         b.iter(|| {
             m = m.append(0).tail();
         })
@@ -397,8 +397,8 @@ mod tests {
 
     #[bench]
     fn bench_iter(b: &mut test::Bencher) {
-        let v = &[0i; 128];
-        let m: ImmutSList<int> = v.iter().map(|&x|x).collect();
+        let v = &[0; 128];
+        let m: ImmutSList<i32> = v.iter().map(|&x|x).collect();
         b.iter(|| {
             assert!(m.iter().count() == 128);
         })
