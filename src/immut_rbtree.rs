@@ -661,7 +661,7 @@ fn fromparts<K:Ord,V>(c: Color,
              left: &Rc<ImmutRbTree_<K,V>>, 
              e: &Rc<Entry<K,V>>,
              right: &Rc<ImmutRbTree_<K,V>>) -> ImmutRbTree_<K,V> {
-    Node(c.clone(), left.clone(), e.clone(), right.clone(), left.len() + (&*right).len() + 1u)
+    Node(c.clone(), left.clone(), e.clone(), right.clone(), left.len() + (&*right).len() + 1us)
 }
 
 #[inline]
@@ -1085,7 +1085,7 @@ mod tests {
 
     #[test]
     fn test_basic() {
-        let m: ImmutRbTree<int, int> = ImmutRbTree::new();
+        let m: ImmutRbTree<isize, isize> = ImmutRbTree::new();
         let m = m.insert(1, 2);
         let m = m.insert(4, 5);
         let m = m.insert(-1, 4);
@@ -1099,11 +1099,11 @@ mod tests {
         hasall(&m, vec![(4,5),(-1,4), (3,3)].as_slice());
     }
 
-    fn paired(v: &[int]) -> Vec<(int, int)> {
+    fn paired(v: &[isize]) -> Vec<(isize, isize)> {
         v.iter().zip(v.iter()).map(|(x,y)| (*x,*y)).collect()
     }
 
-    fn gen_map(v: &[int]) -> ImmutRbTree<int, int> {
+    fn gen_map(v: &[isize]) -> ImmutRbTree<isize, isize> {
         paired(v).iter().map(|&x| x).collect()
     }
 
@@ -1116,7 +1116,7 @@ mod tests {
         assert_eq!(m.len(), 7);
     }
 
-    fn pair_deref(p: (&int, &int)) -> (int,int) {
+    fn pair_deref(p: (&isize, &isize)) -> (isize,isize) {
         (*p.0, *p.1)
     }
 
@@ -1149,7 +1149,7 @@ mod tests {
                     1     5
         */
         
-        let mut x : Vec<(int, int)> = m1.iter().map(pair_deref).collect();
+        let mut x : Vec<(isize, isize)> = m1.iter().map(pair_deref).collect();
         assert_eq!(x, vec![(-3, -3), (-2, -2), (0, 0), (2, 2), (3, 3),
                            (4, 4), (7, 7), (9, 9), (10, 10)]);
         x = m1.iter().rev().map(pair_deref).collect();
@@ -1194,14 +1194,14 @@ mod tests {
 
     #[test]
     fn test_pop() {
-        let m = ImmutRbTree::new().insert(1i,1i);
+        let m = ImmutRbTree::new().insert(1is,1is);
         assert_eq!(m.remove(&3), m);
         assert_eq!(m.insert(2,2).remove(&2), m);
     }
 
     #[test]
     fn test_format() {
-        let mut m : ImmutRbTree<int, int> = ImmutRbTree::new();
+        let mut m : ImmutRbTree<isize, isize> = ImmutRbTree::new();
         assert!(format!("{}", m) == "{}");
         m = m.insert(4, 10).insert(8, 9);
         assert!(format!("{}", m) == "{4: 10, 8: 9}");
@@ -1210,7 +1210,7 @@ mod tests {
     #[test]
     fn test_len() {
         let mut m = ImmutRbTree::new();
-        m = m.insert(1i, 1i);
+        m = m.insert(1is, 1is);
         assert_eq!(m.len(), 1);
         assert_eq!(m.insert(1,2).len(), 1);
         assert_eq!(m.insert(2,2).len(), 2);
@@ -1225,10 +1225,10 @@ mod tests {
         let mut a = ImmutRbTree::new();
         let mut b = ImmutRbTree::new();
         assert!(a <= b && b >= a);
-        a = a.insert(1i, 2i);
+        a = a.insert(1is, 2is);
         assert!(a > b && a >= b);
         assert!(b < a && b <= a);
-        b = b.insert(1i, 1i);
+        b = b.insert(1is, 1is);
         assert!(a > b && a >= b);
         assert!(b < a && b <= a);
         b = b.remove(&1).insert(2,2);
@@ -1241,32 +1241,18 @@ mod tests {
         let mut a = ImmutRbTree::new();
         let mut b = ImmutRbTree::new();
         assert!(a  == b);
-        a = a.insert(1i, 2i);
+        a = a.insert(1is, 2is);
         assert!(a != b);
-        b = b.insert(1i, 1i);
+        b = b.insert(1is, 1is);
         assert!(a != b);
         println!("{}", a.insert(1,1));
         assert!(a.insert(1,1) == b);
     }
 
     #[test]
-    fn test_wtf() {
-        let size = 100us;
-        let mut m = ImmutRbTree::<usize,usize>::new();
-        let mut rng = weak_rng();
-        for _ in range(0, size) {
-            m = m.insert(rng.gen(), rng.gen())
-        };
-        // this works.
-        for entry in m.iter() {
-            
-        }
-    }
-
-    #[test]
     fn test_zip_basic() {
         let mut m = ImmutRbTree::new();
-        m = m.insert(1i, 2i);
+        m = m.insert(1is, 2is);
         m = m.insert(3, 5);
         m = m.insert(6, 7);
         m = m.insert(4, 2);
@@ -1276,7 +1262,7 @@ mod tests {
         opt_eq!(e, v);
     }
 
-    fn check_child(t: &ImmutRbTree_<int, int>, parent: Color) -> usize {
+    fn check_child(t: &ImmutRbTree_<isize, isize>, parent: Color) -> usize {
         match t {
             &DoubleBlackLeaf => {assert!(false, "Double black leaf!"); 0},
             &BlackLeaf => 1,
@@ -1291,7 +1277,7 @@ mod tests {
         }
     }
 
-    fn check_structure(t: &ImmutRbTree_<int, int>) {
+    fn check_structure(t: &ImmutRbTree_<isize, isize>) {
         match t {
             &DoubleBlackLeaf => assert!(false, "double black at root!"),
             &BlackLeaf => (),
@@ -1304,12 +1290,12 @@ mod tests {
 
     #[test]
     fn test_rand_int() {
-        let mut m : ImmutRbTree<int, int> = ImmutRbTree::new();
+        let mut m : ImmutRbTree<isize, isize> = ImmutRbTree::new();
         let seed: &[_] = &[42];
         let mut rng: rand::IsaacRng = rand::SeedableRng::from_seed(seed);
         let mut cnt = 0;
-        for _ in range(0u, 3) {
-            for _ in range(0u, 90) {
+        for _ in range(0us, 3) {
+            for _ in range(0us, 90) {
                 let k = rng.gen();
                 let v = rng.gen();
                 if !m.contains_key(&k) {
@@ -1320,7 +1306,7 @@ mod tests {
                 check_structure(&m.tree);
             }
         }
-        for _ in range(0u, 100) {
+        for _ in range(0us, 100) {
             let root = m.zipper().entry().map(|(&k,_)| k);
             match root {
                 None => (),
@@ -1336,14 +1322,13 @@ mod tests {
 #[cfg(test)]
 mod bench {
     use test::{Bencher, black_box};
-    use test;
     use std::rand::{weak_rng, Rng};
     use super::ImmutRbTree;
 
     #[bench]
     fn bench_insert(b: &mut Bencher) {
         let mut m = ImmutRbTree::new();
-        let mut cur = 0i;
+        let mut cur = 0is;
         b.iter(|| {
             m = m.insert(cur, cur);
             cur += 1;
@@ -1388,7 +1373,7 @@ mod bench {
 
     fn insert_seq_n(b: &mut Bencher, n: usize) {
         let mut m = ImmutRbTree::<usize, usize>::new();
-        for i in range(0u, n) {
+        for i in range(0us, n) {
             m = m.insert(i*2, i*2);
         }
 
