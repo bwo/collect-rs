@@ -644,6 +644,16 @@ impl<K:Ord,V> ImmutRbTree_<K,V> {
             }
         }
     }
+
+    fn maybe_get_child<'a>(&'a self, dir: Dir) -> Option<&'a ImmutRbTree_<K,V>> {
+        match *self {
+            DoubleBlackLeaf | BlackLeaf => None,
+            Node(_, ref left, _, ref right, _) => match dir {
+                Dir::Right => Some(&**right),
+                Dir::Left => Some(&**left)
+            }
+        }
+    }
 }
 
 #[inline]
@@ -1003,16 +1013,24 @@ impl<'a,K:Ord,V> Z<'a,K,V> {
         }
     }
 
+    fn get_node_child(&self, dir: Dir) -> Option<&'a ImmutRbTree_<K, V>> {
+        self.node.maybe_get_child(dir)
+    }
+
     fn dirmost_child(&self, dir: Dir) -> Option<Z<'a, K, V>> {
-        if !self.can_go(dir) {
-            None
-        } else {
-            let mut next = self.go_dir(dir).unwrap();
-            loop {
-                let nnext = next.go_dir(dir);
-                match nnext {
-                    None => return Some(next),
-                    Some(z) => next = z
+        match self.get_node_child(dir) {
+            None => None,
+            Some(node) => {
+                let mut c = self.context.append((dir, self.node));
+                let mut n = node;
+                loop {
+                    match n.maybe_get_child(dir) {
+                        None => return Some(Z { node: n, context: c }),
+                        Some(node) => {
+                            c = c.append((dir, n));
+                            n = node;
+                        }
+                    }
                 }
             }
         }
@@ -1335,19 +1353,15 @@ mod bench {
     fn bench_iter(b: &mut Bencher, size: usize) {
         let mut m = ImmutRbTree::<usize,usize>::new();
         let mut rng = weak_rng();
-        for _ in range(0, 100us) {
+        for _ in range(0, size) {
             m = m.insert(rng.gen(), rng.gen())
         };
-        // this fails. ???
-        for entry in m.iter() {
-            
-        }
 
-        // b.iter(|| {
-        //     for entry in m.iter() {
-        //         black_box(entry);
-        //     }
-        // })
+        b.iter(|| {
+            for entry in m.iter() {
+                black_box(entry);
+            }
+        })
     }
     
     #[bench]
