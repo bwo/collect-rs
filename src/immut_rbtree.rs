@@ -649,8 +649,8 @@ impl<K:Ord,V> ImmutRbTree_<K,V> {
         match *self {
             DoubleBlackLeaf | BlackLeaf => None,
             Node(_, ref left, _, ref right, _) => match dir {
-                Dir::Right => Some(&**right),
-                Dir::Left => Some(&**left)
+                Dir::Right => if right.is_empty() { None } else { Some(&**right) },
+                Dir::Left => if left.is_empty() { None } else { Some(&**left) }
             }
         }
     }
@@ -1013,12 +1013,8 @@ impl<'a,K:Ord,V> Z<'a,K,V> {
         }
     }
 
-    fn get_node_child(&self, dir: Dir) -> Option<&'a ImmutRbTree_<K, V>> {
-        self.node.maybe_get_child(dir)
-    }
-
     fn dirmost_child(&self, dir: Dir) -> Option<Z<'a, K, V>> {
-        match self.get_node_child(dir) {
+        match self.node.maybe_get_child(dir) {
             None => None,
             Some(node) => {
                 let mut c = self.context.append((dir, self.node));
@@ -1056,7 +1052,7 @@ mod tests {
     use super::Color::*;
     use super::Color;
     use super::ImmutRbTree_;
-    use std::rand::{weak_rng, Rng};
+    use std::rand::Rng;
     use std::rand;
     
     macro_rules! opt_eq {
@@ -1357,6 +1353,11 @@ mod bench {
     #[bench]
     pub fn iter_1000(b: &mut Bencher) {
         bench_iter(b, 1000);
+    }
+
+    #[bench]
+    pub fn iter_100000(b: &mut Bencher) {
+        bench_iter(b, 100000);
     }
 
     fn insert_rand_n(b: &mut Bencher, n: usize) {
