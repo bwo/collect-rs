@@ -1038,7 +1038,7 @@ mod tests {
     use super::Color::*;
     use super::Color;
     use super::ImmutRbTree_;
-    use std::rand::Rng;
+    use std::rand::{weak_rng, Rng};
     use std::rand;
     
     macro_rules! opt_eq {
@@ -1232,6 +1232,20 @@ mod tests {
     }
 
     #[test]
+    fn test_wtf() {
+        let size = 100us;
+        let mut m = ImmutRbTree::<usize,usize>::new();
+        let mut rng = weak_rng();
+        for _ in range(0, size) {
+            m = m.insert(rng.gen(), rng.gen())
+        };
+        // this works.
+        for entry in m.iter() {
+            
+        }
+    }
+
+    #[test]
     fn test_zip_basic() {
         let mut m = ImmutRbTree::new();
         m = m.insert(1i, 2i);
@@ -1321,15 +1335,19 @@ mod bench {
     fn bench_iter(b: &mut Bencher, size: usize) {
         let mut m = ImmutRbTree::<usize,usize>::new();
         let mut rng = weak_rng();
-        for _ in range(0, size) {
+        for _ in range(0, 100us) {
             m = m.insert(rng.gen(), rng.gen())
         };
+        // this fails. ???
+        for entry in m.iter() {
+            
+        }
 
-        b.iter(|| {
-            for entry in m.iter() {
-                black_box(entry);
-            }
-        })
+        // b.iter(|| {
+        //     for entry in m.iter() {
+        //         black_box(entry);
+        //     }
+        // })
     }
     
     #[bench]
