@@ -46,6 +46,8 @@ impl<T> ImmutSList<T> {
     }
 
     /// Returns a reference to the first element in the list
+    #[inline(never)] // FIX really this should be inlined or at least
+    // inlineable, but it leads to illegal instrs
     pub fn head (&self) -> Option<&T> {
         self.front.as_ref().map(|node| &node.elem)
     }
