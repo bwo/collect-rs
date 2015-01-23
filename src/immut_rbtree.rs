@@ -1025,17 +1025,13 @@ impl<'a,K:Ord,V> Z<'a,K,V> {
         match self.node.maybe_get_child(dir) {
             None => None,
             Some(node) => {
-                let mut c = self.context.append((dir, self.node));
-                let mut n = node;
-                loop {
-                    match n.maybe_get_child(dir) {
-                        None => return Some(Z { node: n, context: c }),
-                        Some(node) => {
-                            c = c.append((dir, n));
-                            n = node;
-                        }
-                    }
+                let mut context = self.context.append((dir, self.node));
+                let mut t = node;
+                while let Some(c) = t.maybe_get_child(dir) {
+                    context = context.append((dir, t));
+                    t = c;
                 }
+                Some(Z {node: t, context: context} )
             }
         }
     }
