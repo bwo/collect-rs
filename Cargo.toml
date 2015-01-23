@@ -16,3 +16,6 @@ readme = "README.md"
 
 [dependencies]
 traverse = "*"
+
+[profile.bench]
+opt-level = 2
