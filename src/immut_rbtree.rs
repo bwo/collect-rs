@@ -645,12 +645,20 @@ impl<K:Ord,V> ImmutRbTree_<K,V> {
         }
     }
 
+    #[inline]
+    fn to_opt<'a>(&'a self) -> Option<&'a ImmutRbTree_<K,V>> {
+        match &*self {
+            &DoubleBlackLeaf | &BlackLeaf => None,
+            node => Some(node)
+        }
+    }
+
     fn maybe_get_child<'a>(&'a self, dir: Dir) -> Option<&'a ImmutRbTree_<K,V>> {
         match *self {
             DoubleBlackLeaf | BlackLeaf => None,
             Node(_, ref left, _, ref right, _) => match dir {
-                Dir::Right => if right.is_empty() { None } else { Some(&**right) },
-                Dir::Left => if left.is_empty() { None } else { Some(&**left) }
+                Dir::Right => right.to_opt(),
+                Dir::Left => left.to_opt()
             }
         }
     }
