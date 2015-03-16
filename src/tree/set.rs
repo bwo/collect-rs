@@ -10,14 +10,12 @@
 
 use std::cmp::Ordering::{self, Less, Equal, Greater};
 use std::default::Default;
-use std::fmt;
-use std::fmt::Show;
-use std::iter::Peekable;
-use std::iter;
-use std::hash::{Hash, Hasher, Writer};
+use std::fmt::{self, Debug};
+use std::iter::{self, Peekable, IntoIterator};
+use std::hash::{Hash, Hasher};
 use std::ops;
 
-use compare::{Compare, Natural};
+use compare::{Compare, Natural, natural};
 use tree_map::{self, TreeMap};
 
 // FIXME(conventions): implement bounded iterators
@@ -57,7 +55,7 @@ use tree_map::{self, TreeMap};
 ///     level: u32,
 /// }
 ///
-/// let mut trolls = TreeSet::with_comparator(|&: l: &Troll, r: &Troll| l.level.cmp(&r.level));
+/// let mut trolls = TreeSet::with_comparator(|l: &Troll, r: &Troll| l.level.cmp(&r.level));
 ///
 /// trolls.insert(Troll { name: "Orgarr", level: 2 });
 /// trolls.insert(Troll { name: "Blargarr", level: 3 });
@@ -105,7 +103,7 @@ impl<T: Ord> Ord for TreeSet<T> {
     }
 }
 
-impl<T: Show, C> Show for TreeSet<T, C> where C: Compare<T> {
+impl<T: Debug, C> Debug for TreeSet<T, C> where C: Compare<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "{{"));
 
@@ -134,7 +132,7 @@ impl<T: Ord> TreeSet<T> {
     /// ```
     #[inline]
     #[unstable = "matches collection reform specification, waiting for dust to settle"]
-    pub fn new() -> TreeSet<T> { TreeSet::with_comparator(Natural) }
+    pub fn new() -> TreeSet<T> { TreeSet::with_comparator(natural()) }
 }
 
 impl<T, C> TreeSet<T, C> where C: Compare<T> {
@@ -161,7 +159,7 @@ impl<T, C> TreeSet<T, C> where C: Compare<T> {
     /// ```
     #[inline]
     #[unstable = "matches collection reform specification, waiting for dust to settle"]
-    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
+    pub fn iter(&self) -> Iter<T> {
         Iter { iter: self.map.iter() }
     }
 
@@ -179,7 +177,7 @@ impl<T, C> TreeSet<T, C> where C: Compare<T> {
     /// }
     /// ```
     #[inline]
-    pub fn rev_iter<'a>(&'a self) -> RevIter<'a, T> {
+    pub fn rev_iter(&self) -> RevIter<T> {
         RevIter { iter: self.map.rev_iter() }
     }
 
@@ -219,7 +217,7 @@ impl<T, C> TreeSet<T, C> where C: Compare<T> {
     /// assert_eq!(set.lower_bound(&10).next(), None);
     /// ```
     #[inline]
-    pub fn lower_bound<'a>(&'a self, v: &T) -> Iter<'a, T> {
+    pub fn lower_bound(&self, v: &T) -> Iter<T> {
         Iter { iter: self.map.lower_bound(v) }
     }
 
@@ -238,7 +236,7 @@ impl<T, C> TreeSet<T, C> where C: Compare<T> {
     /// assert_eq!(set.upper_bound(&10).next(), None);
     /// ```
     #[inline]
-    pub fn upper_bound<'a>(&'a self, v: &T) -> Iter<'a, T> {
+    pub fn upper_bound(&self, v: &T) -> Iter<T> {
         Iter { iter: self.map.upper_bound(v) }
     }
 
@@ -580,33 +578,33 @@ pub struct RevIter<'a, T:'a> {
 }
 
 /// A lazy forward iterator over a set that consumes the set while iterating.
-pub struct IntoIter<T>(iter::Map<(T, ()), T, tree_map::IntoIter<T, ()>, fn((T, ())) -> T>);
+pub struct IntoIter<T>(iter::Map<tree_map::IntoIter<T, ()>, fn((T, ())) -> T>);
 
 /// A lazy iterator producing elements in the set difference (in-order).
 pub struct Difference<'a, T:'a, C:'a> {
-    a: Peekable<&'a T, Iter<'a, T>>,
-    b: Peekable<&'a T, Iter<'a, T>>,
+    a: Peekable<Iter<'a, T>>,
+    b: Peekable<Iter<'a, T>>,
     cmp: &'a C,
 }
 
 /// A lazy iterator producing elements in the set symmetric difference (in-order).
 pub struct SymmetricDifference<'a, T:'a, C:'a> {
-    a: Peekable<&'a T, Iter<'a, T>>,
-    b: Peekable<&'a T, Iter<'a, T>>,
+    a: Peekable<Iter<'a, T>>,
+    b: Peekable<Iter<'a, T>>,
     cmp: &'a C,
 }
 
 /// A lazy iterator producing elements in the set intersection (in-order).
 pub struct Intersection<'a, T:'a, C:'a> {
-    a: Peekable<&'a T, Iter<'a, T>>,
-    b: Peekable<&'a T, Iter<'a, T>>,
+    a: Peekable<Iter<'a, T>>,
+    b: Peekable<Iter<'a, T>>,
     cmp: &'a C,
 }
 
 /// A lazy iterator producing elements in the set union (in-order).
 pub struct Union<'a, T:'a, C:'a> {
-    a: Peekable<&'a T, Iter<'a, T>>,
-    b: Peekable<&'a T, Iter<'a, T>>,
+    a: Peekable<Iter<'a, T>>,
+    b: Peekable<Iter<'a, T>>,
     cmp: &'a C,
 }
 
@@ -810,7 +808,7 @@ impl<'a, 'b, T, C> ops::Sub<&'b TreeSet<T, C>> for &'a TreeSet<T, C>
 }
 
 impl<T, C> iter::FromIterator<T> for TreeSet<T, C> where C: Compare<T> + Default {
-    fn from_iter<Iter: Iterator<Item=T>>(iter: Iter) -> TreeSet<T, C> {
+    fn from_iter<Iter: IntoIterator<Item=T>>(iter: Iter) -> TreeSet<T, C> {
         let mut set: TreeSet<T, C> = Default::default();
         set.extend(iter);
         set
@@ -819,20 +817,36 @@ impl<T, C> iter::FromIterator<T> for TreeSet<T, C> where C: Compare<T> + Default
 
 impl<T, C> Extend<T> for TreeSet<T, C> where C: Compare<T> {
     #[inline]
-    fn extend<Iter: Iterator<Item=T>>(&mut self, mut iter: Iter) {
+    fn extend<Iter: IntoIterator<Item=T>>(&mut self, iter: Iter) {
         for elem in iter {
             self.insert(elem);
         }
     }
 }
 
-impl<S: Hasher+Writer, T: Hash<S>, C> Hash<S> for TreeSet<T, C> where C: Compare<T> {
-    fn hash(&self, state: &mut S) {
+
+impl<T: Hash, C> Hash for TreeSet<T, C> where C: Compare<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         for elt in self.iter() {
             elt.hash(state);
         }
     }
 }
+
+impl<'a, T, C> IntoIterator for &'a TreeSet<T, C> where C: Compare<T> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+    fn into_iter(self) -> Iter<'a, T> { self.iter() }
+}
+
+impl<T, C> IntoIterator for TreeSet<T, C> where C: Compare<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+    fn into_iter(self) -> IntoIter<T> { self.into_iter() }
+}
+
+#[cfg(feature="ordered_iter")]
+impl<'a, K> ::ordered_iter::OrderedSetIterator for Iter<'a, K> {}
 
 #[cfg(test)]
 mod test {
@@ -997,7 +1011,8 @@ mod test {
         expected: &'b [i32],
     }
 
-    impl<'a, 'b, 'c> FnMut(&'c i32) -> bool for Counter<'a, 'b> {
+    impl<'a, 'b, 'c> FnMut<(&'c i32,)> for Counter<'a, 'b> {
+        type Output = bool;
         extern "rust-call" fn call_mut(&mut self, (&x,): (&'c i32,)) -> bool {
             assert_eq!(x, self.expected[*self.i]);
             *self.i += 1;
@@ -1155,22 +1170,22 @@ mod test {
     }
 
     #[test]
-    fn test_show() {
+    fn test_debug() {
         let mut set = TreeSet::new();
         let empty: TreeSet<i32> = TreeSet::new();
 
         set.insert(1);
         set.insert(2);
 
-        assert_eq!(format!("{:?}", set), "{1i32, 2i32}");
+        assert_eq!(format!("{:?}", set), "{1, 2}");
         assert_eq!(format!("{:?}", empty), "{}");
     }
 
     #[test]
     fn test_comparator_iterator() {
-        use compare::{CompareExt, Natural};
+        use compare::{Compare, natural};
 
-        let mut m = TreeSet::with_comparator(Natural.rev());
+        let mut m = TreeSet::with_comparator(natural().rev());
 
         assert!(m.insert(3));
         assert!(m.insert(0));
@@ -1188,9 +1203,9 @@ mod test {
 
     #[test]
     fn test_comparator_borrowed() {
-        use compare::{CompareExt, Natural};
+        use compare::{Compare, natural};
 
-        let mut m = TreeSet::with_comparator(Natural::<str>.borrow());
+        let mut m = TreeSet::with_comparator(natural().borrow());
 
         assert!(m.insert("a".to_string()));
 

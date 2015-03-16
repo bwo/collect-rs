@@ -13,10 +13,8 @@
 // FIXME(conventions): implement iter_mut and into_iter
 
 use std::cmp::Ordering::{self, Less, Equal, Greater};
-use std::default::Default;
-use std::fmt;
-use std::fmt::Show;
-use std::iter::{self, Peekable};
+use std::fmt::{self, Debug};
+use std::iter::{self, Peekable, IntoIterator};
 use std::ops;
 
 use trie_map::{TrieMap, self};
@@ -50,12 +48,12 @@ use trie_map::{TrieMap, self};
 /// set.clear();
 /// assert!(set.is_empty());
 /// ```
-#[derive(Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TrieSet {
     map: TrieMap<()>
 }
 
-impl Show for TrieSet {
+impl Debug for TrieSet {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "{{"));
 
@@ -66,11 +64,6 @@ impl Show for TrieSet {
 
         write!(f, "}}")
     }
-}
-
-impl Default for TrieSet {
-    #[inline]
-    fn default() -> TrieSet { TrieSet::new() }
 }
 
 impl TrieSet {
@@ -132,7 +125,7 @@ impl TrieSet {
     /// ```
     #[inline]
     #[unstable = "matches collection reform specification, waiting for dust to settle"]
-    pub fn iter<'a>(&'a self) -> Iter<'a> {
+    pub fn iter(&self) -> Iter {
         Iter { iter: self.map.iter() }
     }
 
@@ -149,7 +142,7 @@ impl TrieSet {
     /// assert_eq!(set.lower_bound(5).next(), Some(6));
     /// assert_eq!(set.lower_bound(10).next(), None);
     /// ```
-    pub fn lower_bound<'a>(&'a self, val: usize) -> Iter<'a> {
+    pub fn lower_bound(&self, val: usize) -> Iter {
         Iter { iter: self.map.lower_bound(val) }
     }
 
@@ -166,7 +159,7 @@ impl TrieSet {
     /// assert_eq!(set.upper_bound(5).next(), Some(6));
     /// assert_eq!(set.upper_bound(10).next(), None);
     /// ```
-    pub fn upper_bound<'a>(&'a self, val: usize) -> Iter<'a> {
+    pub fn upper_bound(&self, val: usize) -> Iter {
         Iter { iter: self.map.upper_bound(val) }
     }
 
@@ -299,7 +292,7 @@ impl TrieSet {
     /// assert!(!v.is_empty());
     /// ```
     #[unstable = "matches collection reform specification, waiting for dust to settle"]
-    pub fn is_empty(&self) -> bool { self.len() == 0 }
+    pub fn is_empty(&self) -> bool { self.map.is_empty() }
 
     /// Clears the set, removing all values.
     ///
@@ -446,7 +439,7 @@ impl TrieSet {
 }
 
 impl iter::FromIterator<usize> for TrieSet {
-    fn from_iter<Iter: Iterator<Item=usize>>(iter: Iter) -> TrieSet {
+    fn from_iter<I: IntoIterator<Item=usize>>(iter: I) -> TrieSet {
         let mut set = TrieSet::new();
         set.extend(iter);
         set
@@ -454,7 +447,7 @@ impl iter::FromIterator<usize> for TrieSet {
 }
 
 impl Extend<usize> for TrieSet {
-    fn extend<Iter: Iterator<Item=usize>>(&mut self, mut iter: Iter) {
+    fn extend<I: IntoIterator<Item=usize>>(&mut self, iter: I) {
         for elem in iter {
             self.insert(elem);
         }
@@ -560,26 +553,26 @@ pub struct Iter<'a> {
 
 /// An iterator producing elements in the set difference (in-order).
 pub struct Difference<'a> {
-    a: Peekable<usize, Iter<'a>>,
-    b: Peekable<usize, Iter<'a>>,
+    a: Peekable<Iter<'a>>,
+    b: Peekable<Iter<'a>>,
 }
 
 /// An iterator producing elements in the set symmetric difference (in-order).
 pub struct SymmetricDifference<'a> {
-    a: Peekable<usize, Iter<'a>>,
-    b: Peekable<usize, Iter<'a>>,
+    a: Peekable<Iter<'a>>,
+    b: Peekable<Iter<'a>>,
 }
 
 /// An iterator producing elements in the set intersection (in-order).
 pub struct Intersection<'a> {
-    a: Peekable<usize, Iter<'a>>,
-    b: Peekable<usize, Iter<'a>>,
+    a: Peekable<Iter<'a>>,
+    b: Peekable<Iter<'a>>,
 }
 
 /// An iterator producing elements in the set union (in-order).
 pub struct Union<'a> {
-    a: Peekable<usize, Iter<'a>>,
-    b: Peekable<usize, Iter<'a>>,
+    a: Peekable<Iter<'a>>,
+    b: Peekable<Iter<'a>>,
 }
 
 /// Compare `x` and `y`, but return `short` if x is None and `long` if y is None
@@ -660,6 +653,15 @@ impl<'a> Iterator for Union<'a> {
     }
 }
 
+impl<'a> IntoIterator for &'a TrieSet {
+    type Item = usize;
+    type IntoIter = Iter<'a>;
+    fn into_iter(self) -> Iter<'a> { self.iter() }
+}
+
+#[cfg(feature="ordered_iter")]
+impl<'a> ::ordered_iter::OrderedSetIterator for Iter<'a> {}
+
 #[cfg(test)]
 mod test {
     use std::usize;
@@ -697,14 +699,14 @@ mod test {
     }
 
     #[test]
-    fn test_show() {
+    fn test_debug() {
         let mut set = TrieSet::new();
         let empty = TrieSet::new();
 
         set.insert(1);
         set.insert(2);
 
-        assert_eq!(format!("{:?}", set), "{1u, 2u}");
+        assert_eq!(format!("{:?}", set), "{1, 2}");
         assert_eq!(format!("{:?}", empty), "{}");
     }
 
@@ -756,7 +758,8 @@ mod test {
         expected: &'b [usize],
     }
 
-    impl<'a, 'b> FnMut(usize) -> bool for Counter<'a, 'b> {
+    impl<'a, 'b> FnMut<(usize,)> for Counter<'a, 'b> {
+        type Output = bool;
         extern "rust-call" fn call_mut(&mut self, (x,): (usize,)) -> bool {
             assert_eq!(x, self.expected[*self.i]);
             *self.i += 1;

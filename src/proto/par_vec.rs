@@ -3,7 +3,7 @@ extern crate alloc;
 use self::alloc::arc;
 
 use std::cmp::min;
-use std::fmt::{Formatter, Show};
+use std::fmt::{Formatter, Debug};
 use std::fmt::Error as FmtError;
 use std::iter::range_inclusive;
 use std::sync::Arc;
@@ -18,7 +18,7 @@ pub struct ParVec<T> {
     data: Arc<Vec<T>>,
 }
 
-impl<T: Send + Sync> ParVec<T> {
+impl<T: 'static + Send + Sync> ParVec<T> {
     /// Create a new `ParVec`, returning it and a vector of slices that can be sent
     /// to other threads and mutated concurrently.
     pub fn new(vec: Vec<T>, slices: usize) -> (ParVec<T>, Vec<ParSlice<T>>) {
@@ -73,7 +73,7 @@ fn sub_slices<T>(parent: &[T], slice_count: usize) -> Vec<&[T]> {
         let slice_len = (len - start) / curr;
         let end = min(start + slice_len, len);
 
-        slices.push(parent.slice(start, end));
+        slices.push(&parent[start..end]);
         start += slice_len;
     }
 
@@ -82,7 +82,7 @@ fn sub_slices<T>(parent: &[T], slice_count: usize) -> Vec<&[T]> {
 
 /// A slice of `ParVec` that can be sent to another task for processing.
 /// Automatically releases the slice on drop.
-pub struct ParSlice<T: Send> {
+pub struct ParSlice<T: Send + 'static> {
     // Just to keep the source vector alive while the slice is,
     // since the ParVec can die asynchronously.
     _vec: Arc<Vec<T>>,
@@ -104,7 +104,7 @@ impl<T: Send> ops::DerefMut for ParSlice<T> {
     }
 }
 
-impl<T: Send> Show for ParSlice<T> where T: Show {
+impl<T: Send> Debug for ParSlice<T> where T: Debug {
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(f, "{:?}", self.data)
     }
@@ -112,12 +112,13 @@ impl<T: Send> Show for ParSlice<T> where T: Show {
 
 #[cfg(test)]
 mod test {
+    extern crate threadpool;
     extern crate test;
     use self::test::Bencher;
     use super::ParVec;
     use std::mem;
-    use std::rand::{thread_rng, Rng};
     use std::iter::range_inclusive;
+    use rand::{thread_rng, Rng};
 
     const TEST_SLICES: usize = 8;
     const TEST_MAX: u32 = 1000;
@@ -152,10 +153,10 @@ mod test {
 
     #[bench]
     fn par_prime_factors_1000(b: &mut Bencher) {
-        use std::sync::TaskPool;
+        use self::threadpool::ThreadPool;
 
         let mut rng = thread_rng();
-        let pool = TaskPool::new(TEST_SLICES);
+        let pool = ThreadPool::new(TEST_SLICES);
 
         b.iter(|| {
             let mut vec: Vec<(u32, Vec<u32>)> = range_inclusive(1, TEST_MAX)

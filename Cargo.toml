@@ -1,7 +1,7 @@
 [package]
 
 name = "collect"
-version = "0.0.15"
+version = "0.0.25"
 license = "MIT/Apache-2.0"
 description = "An experimental extension of std::collections"
 authors = ["Alexis Beingessner <a.beingessner@gmail.com>",
@@ -14,8 +14,31 @@ documentation = "http://Gankro.github.io/collect-rs/collect"
 keywords = ["data-structures"]
 readme = "README.md"
 
-[dependencies]
-traverse = "*"
+[features]
+default = ["blist", "enum_set", "immut_slist", "interval_heap",
+           "linked_hash_map", "lru_cache", "tree_map", "trie_map",
+       	   "proto", "string_joiner", "ordered_iter", "immut_rbtree"]
+blist = ["proto", "traverse"]
+enum_set = []
+immut_rbtree = ["immut_slist", "compare"]
+immut_slist  = []
+interval_heap = ["compare"]
+linked_hash_map = []
+lru_cache = ["linked_hash_map"]
+tree_map = ["compare"]
+trie_map = []
+proto = []
+string_joiner = []
 
-[profile.bench]
-opt-level = 2
+[dependencies.compare]
+optional = true
+
+[dependencies.ordered_iter]
+optional = true
+
+[dependencies.traverse]
+optional = true
+
+[dev-dependencies]
+rand = "*"
+threadpool = "*"

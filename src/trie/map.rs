@@ -15,12 +15,10 @@ use self::TrieNode::*;
 
 use std::cmp::Ordering;
 use std::default::Default;
-use std::fmt::Show;
-use std::fmt;
-use std::hash::{Hash, Hasher, Writer};
-use std::iter;
-use std::mem::zeroed;
-use std::mem;
+use std::fmt::{self, Debug};
+use std::hash::{Hash, Hasher};
+use std::iter::{self, IntoIterator};
+use std::mem::{self, zeroed};
 use std::ops;
 use std::ptr;
 use std::slice;
@@ -35,7 +33,7 @@ const SHIFT: usize = 4;
 const SIZE: usize = 1 << SHIFT;
 const MASK: usize = SIZE - 1;
 // The number of chunks that the key is divided into. Also the maximum depth of the TrieMap.
-const MAX_DEPTH: usize = usize::BITS / SHIFT;
+const MAX_DEPTH: usize = usize::BITS as usize / SHIFT;
 
 /// A map implemented as a radix trie.
 ///
@@ -135,7 +133,7 @@ impl<T: Ord> Ord for TrieMap<T> {
     }
 }
 
-impl<T: Show> Show for TrieMap<T> {
+impl<T: Debug> Debug for TrieMap<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "{{"));
 
@@ -225,7 +223,7 @@ impl<T> TrieMap<T> {
     /// }
     /// ```
     #[unstable = "matches collection reform specification, waiting for dust to settle"]
-    pub fn iter<'a>(&'a self) -> Iter<'a, T> {
+    pub fn iter(&self) -> Iter<T> {
         let mut iter = unsafe {Iter::new()};
         iter.stack[0] = self.root.children.iter();
         iter.length = 1;
@@ -253,7 +251,7 @@ impl<T> TrieMap<T> {
     /// assert_eq!(map.get(&3), Some(&-3));
     /// ```
     #[unstable = "matches collection reform specification, waiting for dust to settle"]
-    pub fn iter_mut<'a>(&'a mut self) -> IterMut<'a, T> {
+    pub fn iter_mut(&mut self) -> IterMut<T> {
         let mut iter = unsafe {IterMut::new()};
         iter.stack[0] = self.root.children.iter_mut();
         iter.length = 1;
@@ -382,7 +380,7 @@ impl<T> TrieMap<T> {
     /// ```
     #[inline]
     #[unstable = "matches collection reform specification, waiting for dust to settle"]
-    pub fn get_mut<'a>(&'a mut self, key: &usize) -> Option<&'a mut T> {
+    pub fn get_mut(&mut self, key: &usize) -> Option<&mut T> {
         find_mut(&mut self.root.children[chunk(*key, 0)], *key, 1)
     }
 
@@ -521,7 +519,7 @@ macro_rules! bound {
 impl<T> TrieMap<T> {
     // If `upper` is true then returns upper_bound else returns lower_bound.
     #[inline]
-    fn bound<'a>(&'a self, key: usize, upper: bool) -> Iter<'a, T> {
+    fn bound(&self, key: usize, upper: bool) -> Iter<T> {
         bound!(Iter, self = self,
                key = key, is_upper = upper,
                iter = iter,
@@ -541,7 +539,7 @@ impl<T> TrieMap<T> {
     /// assert_eq!(map.lower_bound(5).next(), Some((6, &"c")));
     /// assert_eq!(map.lower_bound(10).next(), None);
     /// ```
-    pub fn lower_bound<'a>(&'a self, key: usize) -> Iter<'a, T> {
+    pub fn lower_bound(&self, key: usize) -> Iter<T> {
         self.bound(key, false)
     }
 
@@ -558,12 +556,12 @@ impl<T> TrieMap<T> {
     /// assert_eq!(map.upper_bound(5).next(), Some((6, &"c")));
     /// assert_eq!(map.upper_bound(10).next(), None);
     /// ```
-    pub fn upper_bound<'a>(&'a self, key: usize) -> Iter<'a, T> {
+    pub fn upper_bound(&self, key: usize) -> Iter<T> {
         self.bound(key, true)
     }
     // If `upper` is true then returns upper_bound else returns lower_bound.
     #[inline]
-    fn bound_mut<'a>(&'a mut self, key: usize, upper: bool) -> IterMut<'a, T> {
+    fn bound_mut(&mut self, key: usize, upper: bool) -> IterMut<T> {
         bound!(IterMut, self = self,
                key = key, is_upper = upper,
                iter = iter_mut,
@@ -591,7 +589,7 @@ impl<T> TrieMap<T> {
     /// assert_eq!(map.get(&4), Some(&"changed"));
     /// assert_eq!(map.get(&6), Some(&"changed"));
     /// ```
-    pub fn lower_bound_mut<'a>(&'a mut self, key: usize) -> IterMut<'a, T> {
+    pub fn lower_bound_mut(&mut self, key: usize) -> IterMut<T> {
         self.bound_mut(key, false)
     }
 
@@ -616,13 +614,13 @@ impl<T> TrieMap<T> {
     /// assert_eq!(map.get(&4), Some(&"b"));
     /// assert_eq!(map.get(&6), Some(&"changed"));
     /// ```
-    pub fn upper_bound_mut<'a>(&'a mut self, key: usize) -> IterMut<'a, T> {
+    pub fn upper_bound_mut(&mut self, key: usize) -> IterMut<T> {
         self.bound_mut(key, true)
     }
 }
 
 impl<T> iter::FromIterator<(usize, T)> for TrieMap<T> {
-    fn from_iter<Iter: Iterator<Item=(usize, T)>>(iter: Iter) -> TrieMap<T> {
+    fn from_iter<I: IntoIterator<Item=(usize, T)>>(iter: I) -> TrieMap<T> {
         let mut map = TrieMap::new();
         map.extend(iter);
         map
@@ -630,15 +628,15 @@ impl<T> iter::FromIterator<(usize, T)> for TrieMap<T> {
 }
 
 impl<T> Extend<(usize, T)> for TrieMap<T> {
-    fn extend<Iter: Iterator<Item=(usize, T)>>(&mut self, mut iter: Iter) {
+    fn extend<I: IntoIterator<Item=(usize, T)>>(&mut self, iter: I) {
         for (k, v) in iter {
             self.insert(k, v);
         }
     }
 }
 
-impl<S: Hasher+Writer, T: Hash<S>> Hash<S> for TrieMap<T> {
-    fn hash(&self, state: &mut S) {
+impl<T: Hash> Hash for TrieMap<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         for elt in self.iter() {
             elt.hash(state);
         }
@@ -648,15 +646,14 @@ impl<S: Hasher+Writer, T: Hash<S>> Hash<S> for TrieMap<T> {
 impl<T> ops::Index<usize> for TrieMap<T> {
     type Output = T;
     #[inline]
-    fn index<'a>(&'a self, i: &usize) -> &'a T {
+    fn index(&self, i: &usize) -> &T {
         self.get(i).expect("key not present")
     }
 }
 
 impl<T> ops::IndexMut<usize> for TrieMap<T> {
-    type Output = T;
     #[inline]
-    fn index_mut<'a>(&'a mut self, i: &usize) -> &'a mut T {
+    fn index_mut(&mut self, i: &usize) -> &mut T {
         self.get_mut(i).expect("key not present")
     }
 }
@@ -704,11 +701,11 @@ impl<T> InternalNode<T> {
 // if this was done via a trait, the key could be generic
 #[inline]
 fn chunk(n: usize, idx: usize) -> usize {
-    let sh = usize::BITS - (SHIFT * (idx + 1));
+    let sh = usize::BITS as usize - (SHIFT * (idx + 1));
     (n >> sh) & MASK
 }
 
-fn find_mut<'r, T>(child: &'r mut TrieNode<T>, key: usize, idx: usize) -> Option<&'r mut T> {
+fn find_mut<T>(child: &mut TrieNode<T>, key: usize, idx: usize) -> Option<&mut T> {
     match *child {
         External(stored, ref mut value) if stored == key => Some(value),
         External(..) => None,
@@ -892,7 +889,7 @@ impl<'a, T> SearchStack<'a, T> {
 impl<T> TrieMap<T> {
     /// Gets the given key's corresponding entry in the map for in-place manipulation.
     #[inline]
-    pub fn entry<'a>(&'a mut self, key: usize) -> Entry<'a, T> {
+    pub fn entry(&mut self, key: usize) -> Entry<T> {
         // Create an empty search stack.
         let mut search_stack = SearchStack::new(self, key);
 
@@ -931,7 +928,7 @@ impl<T> TrieMap<T> {
 ///
 /// This function is safe only if `node` points to a valid `TrieNode`.
 #[inline]
-unsafe fn next_child<'a, T>(node: *mut TrieNode<T>, key: usize, idx: usize)
+unsafe fn next_child<T>(node: *mut TrieNode<T>, key: usize, idx: usize)
     -> (Option<*mut TrieNode<T>>, bool) {
     match *node {
         // If the node is internal, tell the caller to descend further.
@@ -1085,11 +1082,10 @@ pub struct IterMut<'a, T:'a> {
 }
 
 /// A forward iterator over the keys of a map.
-pub type Keys<'a, T> = iter::Map<(usize, &'a T), usize, Iter<'a, T>, fn((usize, &'a T)) -> usize>;
+pub type Keys<'a, T> = iter::Map<Iter<'a, T>, fn((usize, &'a T)) -> usize>;
 
 /// A forward iterator over the values of a map.
-pub type Values<'a, T> =
-    iter::Map<(usize, &'a T), &'a T, Iter<'a, T>, fn((usize, &'a T)) -> &'a T>;
+pub type Values<'a, T> = iter::Map<Iter<'a, T>, fn((usize, &'a T)) -> &'a T>;
 
 // FIXME #5846: see `addr!` above.
 macro_rules! item { ($i:item) => {$i}}
@@ -1209,6 +1205,24 @@ macro_rules! iterator_impl {
 iterator_impl! { Iter, iter = iter, mutability = }
 iterator_impl! { IterMut, iter = iter_mut, mutability = mut }
 
+impl<'a, T> IntoIterator for &'a TrieMap<T> {
+    type Item = (usize, &'a T);
+    type IntoIter = Iter<'a, T>;
+    fn into_iter(self) -> Iter<'a, T> { self.iter() }
+}
+
+impl<'a, T> IntoIterator for &'a mut TrieMap<T> {
+    type Item = (usize, &'a mut T);
+    type IntoIter = IterMut<'a, T>;
+    fn into_iter(self) -> IterMut<'a, T> { self.iter_mut() }
+}
+
+#[cfg(feature="ordered_iter")]
+impl<'a, T> ::ordered_iter::OrderedMapIterator for Iter<'a, T> {
+    type Key = usize;
+    type Val = &'a T;
+}
+
 #[cfg(test)]
 mod test {
     use std::iter::range_step;
@@ -1307,12 +1321,12 @@ mod test {
         assert!(m.insert(2, 4).is_none());
         assert!(m.insert(1, 2).is_none());
 
-        let mut n = 4;
+        let mut n = 5;
         let mut vec: Vec<&i32> = vec![];
         m.each_reverse(|k, v| {
+            n -= 1;
             assert_eq!(*k, n);
             vec.push(v);
-            n -= 1;
             true
         });
         assert_eq!(vec, [&8, &6, &4, &2, &0]);
@@ -1591,14 +1605,14 @@ mod test {
     }
 
     #[test]
-    fn test_show() {
+    fn test_debug() {
         let mut map = TrieMap::new();
         let empty: TrieMap<char> = TrieMap::new();
 
         map.insert(1, 'a');
         map.insert(2, 'b');
 
-        assert_eq!(format!("{:?}", map), "{1u: 'a', 2u: 'b'}");
+        assert_eq!(format!("{:?}", map), "{1: 'a', 2: 'b'}");
         assert_eq!(format!("{:?}", empty), "{}");
     }
 
@@ -1614,7 +1628,7 @@ mod test {
     }
 
     #[test]
-    #[should_fail]
+    #[should_panic]
     fn test_index_nonexistent() {
         let mut map = TrieMap::new();
 
@@ -1757,12 +1771,24 @@ mod test {
 
 #[cfg(test)]
 mod bench {
-    use std::rand::{weak_rng, Rng};
+    use rand::{weak_rng, Rng};
     use test::{Bencher, black_box};
 
     use super::{TrieMap, Occupied, Vacant};
 
     const MAP_SIZE: usize = 1000;
+
+    map_insert_rand_bench!{insert_rand_100,    100,    TrieMap}
+    map_insert_rand_bench!{insert_rand_10_000, 10_000, TrieMap}
+
+    map_insert_seq_bench!{insert_seq_100,    100,    TrieMap}
+    map_insert_seq_bench!{insert_seq_10_000, 10_000, TrieMap}
+
+    map_find_rand_bench!{find_rand_100,    100,    TrieMap}
+    map_find_rand_bench!{find_rand_10_000, 10_000, TrieMap}
+
+    map_find_seq_bench!{find_seq_100,    100,    TrieMap}
+    map_find_seq_bench!{find_seq_10_000, 10_000, TrieMap}
 
     fn random_map(size: usize) -> TrieMap<usize> {
         let mut map = TrieMap::<usize>::new();

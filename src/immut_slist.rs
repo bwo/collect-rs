@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
-use std::iter;
+use std::iter::{self, IntoIterator};
 use std::rc::{try_unwrap, Rc};
-use std::hash::{Hash, Hasher, Writer};
+use std::hash::{Hash, Hasher};
 use std;
 
 struct Node<T> {
@@ -145,9 +145,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 }
 
 impl<T> iter::FromIterator<T> for ImmutSList<T> {
-    fn from_iter<I: Iterator<Item=T>>(mut iterator: I) -> ImmutSList<T> {
+    fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> ImmutSList<T> {
         let mut list = ImmutSList::new();
-        for elem in iterator {
+        for elem in iter {
             list = list.append(elem);
         }
         list
@@ -181,7 +181,7 @@ impl <T> Clone for ImmutSList<T> {
     }
 }
 
-impl<T: std::fmt::Show> std::fmt::Show for ImmutSList<T> {
+impl<T: std::fmt::Debug> std::fmt::Debug for ImmutSList<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         try!(write!(f, "["));
 
@@ -194,13 +194,19 @@ impl<T: std::fmt::Show> std::fmt::Show for ImmutSList<T> {
     }
 }
 
-impl<S: Hasher+Writer, A: Hash<S>> Hash<S> for ImmutSList<A> {
-    fn hash(&self, state: &mut S) {
+impl<A: Hash> Hash for ImmutSList<A> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.len().hash(state);
         for elt in self.iter() {
             elt.hash(state);
         }
     }
+}
+
+impl<'a, T> IntoIterator for &'a ImmutSList<T> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+    fn into_iter(self) -> Iter<'a, T> { self.iter() }
 }
 
 #[cfg(test)]
@@ -362,9 +368,9 @@ mod tests {
     }
 
     #[test]
-    fn test_show() {
+    fn test_debug() {
         let list: ImmutSList<i32> = range(0, 10).rev().collect();
-        assert_eq!(format!("{:?}", list), "[0i32, 1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32]");
+        assert_eq!(format!("{:?}", list), "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]");
 
         let list: ImmutSList<&str> = vec!["just", "one", "test", "more"].iter()
                                                                    .rev()
