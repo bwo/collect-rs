@@ -28,12 +28,14 @@
 //! assert_eq!(vec![(2, 20), (1, 10), (3, 30)], items);
 //! ```
 
+use std::boxed;
 use std::cmp::{PartialEq, Eq};
-use std::collections::HashMap;
+use std::collections::hash_map::{self, HashMap};
+use std::collections::hash_state::HashState;
+use std::default::Default;
 use std::fmt;
-use std::hash::{Hash, Hasher, Writer};
-use std::collections::hash_map::Hasher as HmHasher;
-use std::iter::{Iterator, Extend};
+use std::hash::{Hash, Hasher};
+use std::iter::IntoIterator;
 use std::iter;
 use std::marker;
 use std::mem;
@@ -50,13 +52,13 @@ struct LinkedHashMapEntry<K, V> {
 }
 
 /// A linked hash map.
-pub struct LinkedHashMap<K, V> {
-    map: HashMap<KeyRef<K>, Box<LinkedHashMapEntry<K, V>>>,
+pub struct LinkedHashMap<K, V, S = hash_map::RandomState> {
+    map: HashMap<KeyRef<K>, Box<LinkedHashMapEntry<K, V>>, S>,
     head: *mut LinkedHashMapEntry<K, V>,
 }
 
-impl<S: Hasher+Writer, K: Hash<S>> Hash<S> for KeyRef<K> {
-    fn hash(&self, state: &mut S) {
+impl<K: Hash> Hash for KeyRef<K> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         unsafe { (*self.k).hash(state) }
     }
 }
@@ -80,12 +82,21 @@ impl<K, V> LinkedHashMapEntry<K, V> {
     }
 }
 
-impl<K: Hash<HmHasher> + Eq, V> LinkedHashMap<K, V> {
+impl<K: Hash + Eq, V> LinkedHashMap<K, V> {
     /// Creates a linked hash map.
-    pub fn new() -> LinkedHashMap<K, V> {
+    pub fn new() -> LinkedHashMap<K, V> { LinkedHashMap::with_map(HashMap::new()) }
+
+    /// Creates an empty linked hash map with the given initial capacity.
+    pub fn with_capacity(capacity: usize) -> LinkedHashMap<K, V> {
+        LinkedHashMap::with_map(HashMap::with_capacity(capacity))
+    }
+}
+
+impl<K: Hash + Eq, V, S: HashState> LinkedHashMap<K, V, S> {
+    fn with_map(map: HashMap<KeyRef<K>, Box<LinkedHashMapEntry<K, V>>, S>) -> LinkedHashMap<K, V, S> {
         let map = LinkedHashMap {
-            map: HashMap::new(),
-            head: unsafe{ mem::transmute(box mem::uninitialized::<LinkedHashMapEntry<K, V>>()) },
+            map: map,
+            head: unsafe{ boxed::into_raw(box mem::uninitialized::<LinkedHashMapEntry<K, V>>()) },
         };
         unsafe {
             (*map.head).next = map.head;
@@ -93,6 +104,29 @@ impl<K: Hash<HmHasher> + Eq, V> LinkedHashMap<K, V> {
         }
         return map;
     }
+
+    /// Creates an empty linked hash map with the given initial hash state.
+    pub fn with_hash_state(hash_state: S) -> LinkedHashMap<K, V, S> {
+        LinkedHashMap::with_map(HashMap::with_hash_state(hash_state))
+    }
+
+    /// Creates an empty linked hash map with the given initial capacity and hash state.
+    pub fn with_capacity_and_hash_state(capacity: usize, hash_state: S) -> LinkedHashMap<K, V, S> {
+        LinkedHashMap::with_map(HashMap::with_capacity_and_hash_state(capacity, hash_state))
+    }
+
+    /// Reserves capacity for at least `additional` more elements to be inserted into the map. The
+    /// map may reserve more space to avoid frequent allocations.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the new allocation size overflows `usize.`
+    pub fn reserve(&mut self, additional: usize) { self.map.reserve(additional); }
+
+    /// Shrinks the capacity of the map as much as possible. It will drop down as much as possible
+    /// while maintaining the internal rules and possibly leaving some space in accordance with the
+    /// resize policy.
+    pub fn shrink_to_fit(&mut self) { self.map.shrink_to_fit(); }
 
     /// Inserts a key-value pair into the map. If the key already existed, the old value is
     /// returned.
@@ -134,6 +168,11 @@ impl<K: Hash<HmHasher> + Eq, V> LinkedHashMap<K, V> {
             }
         }
         old_val
+    }
+
+    /// Checks if the map contains the given key.
+    pub fn contains_key(&self, k: &K) -> bool {
+        self.map.contains_key(&KeyRef{k: k})
     }
 
     /// Returns the value corresponding to the key in the map.
@@ -310,7 +349,7 @@ impl<K: Hash<HmHasher> + Eq, V> LinkedHashMap<K, V> {
             head: unsafe { (*self.head).prev },
             tail: self.head,
             remaining: self.len(),
-            marker: marker::ContravariantLifetime,
+            marker: marker::PhantomData,
         }
     }
 
@@ -339,7 +378,7 @@ impl<K: Hash<HmHasher> + Eq, V> LinkedHashMap<K, V> {
             head: unsafe { (*self.head).prev },
             tail: self.head,
             remaining: self.len(),
-            marker: marker::ContravariantLifetime
+            marker: marker::PhantomData
         }
     }
 
@@ -392,8 +431,8 @@ impl<K: Hash<HmHasher> + Eq, V> LinkedHashMap<K, V> {
     }
 }
 
-impl<K, V> Index<K> for LinkedHashMap<K, V>
-    where K: Hash<HmHasher> + Eq
+impl<K, V, S> Index<K> for LinkedHashMap<K, V, S>
+    where K: Hash + Eq, S: HashState
 {
     type Output = V;
 
@@ -402,17 +441,15 @@ impl<K, V> Index<K> for LinkedHashMap<K, V>
     }
 }
 
-impl<K, V> IndexMut<K> for LinkedHashMap<K, V>
-    where K: Hash<HmHasher> + Eq
+impl<K, V, S> IndexMut<K> for LinkedHashMap<K, V, S>
+    where K: Hash + Eq, S: HashState
 {
-    type Output = V;
-
     fn index_mut(&mut self, index: &K) -> &mut V {
         self.get_mut(index).expect("no entry found for key")
     }
 }
 
-impl<K: Hash<HmHasher> + Eq, V> LinkedHashMap<K, V> {
+impl<K: Hash + Eq, V, S: HashState> LinkedHashMap<K, V, S> {
     #[inline]
     fn detach(&mut self, node: *mut LinkedHashMapEntry<K, V>) {
         unsafe {
@@ -432,16 +469,37 @@ impl<K: Hash<HmHasher> + Eq, V> LinkedHashMap<K, V> {
     }
 }
 
+// FIXME: `HashMap` doesn't expose its hash state, so we cannot clone fully parameterized
+// `LinkedHashMap`s without cloning the original map and clearing it. For now, only
+// `LinkedHashMap<K, V>`s implement `Clone`.
+impl<K: Hash + Eq + Clone, V: Clone> Clone for LinkedHashMap<K, V> {
+    fn clone(&self) -> LinkedHashMap<K, V> {
+        self.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+    }
+}
 
-impl<K: Hash<HmHasher> + Eq, V> Extend<(K, V)> for LinkedHashMap<K, V> {
-    fn extend<T: Iterator<Item=(K, V)>>(&mut self, mut iter: T) {
-        for (k, v) in iter{
+impl<K: Hash + Eq, V, S: HashState + Default> Default for LinkedHashMap<K, V, S> {
+    fn default() -> LinkedHashMap<K, V, S> { LinkedHashMap::with_hash_state(Default::default()) }
+}
+
+impl<K: Hash + Eq, V, S: HashState> Extend<(K, V)> for LinkedHashMap<K, V, S> {
+    fn extend<T: IntoIterator<Item=(K, V)>>(&mut self, iter: T) {
+        for (k, v) in iter {
             self.insert(k, v);
         }
     }
 }
 
-impl<A: fmt::Show + Hash<HmHasher> + Eq, B: fmt::Show> fmt::Show for LinkedHashMap<A, B> {
+impl<K: Hash + Eq, V, S: HashState + Default> iter::FromIterator<(K, V)> for LinkedHashMap<K, V, S> {
+    fn from_iter<I: IntoIterator<Item=(K, V)>>(iter: I) -> LinkedHashMap<K, V, S> {
+        let iter = iter.into_iter();
+        let mut map = LinkedHashMap::with_capacity_and_hash_state(iter.size_hint().0, Default::default());
+        map.extend(iter);
+        map
+    }
+}
+
+impl<A: fmt::Debug + Hash + Eq, B: fmt::Debug, S: HashState> fmt::Debug for LinkedHashMap<A, B, S> {
     /// Returns a string that lists the key-value pairs in insertion order.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "{{"));
@@ -455,15 +513,23 @@ impl<A: fmt::Show + Hash<HmHasher> + Eq, B: fmt::Show> fmt::Show for LinkedHashM
     }
 }
 
-unsafe impl<K: Send, V: Send> Send for LinkedHashMap<K, V> {}
+impl<K: Hash + Eq, V: PartialEq, S: HashState> PartialEq for LinkedHashMap<K, V, S> {
+    fn eq(&self, other: &LinkedHashMap<K, V, S>) -> bool {
+        self.len() == other.len() && self.iter().zip(other.iter()).all(|(l, r)| l == r)
+    }
+}
 
-unsafe impl<K: Sync, V: Sync> Sync for LinkedHashMap<K, V> {}
+impl<K: Hash + Eq, V: Eq, S: HashState> Eq for LinkedHashMap<K, V, S> {}
+
+unsafe impl<K: Send, V: Send, S: Send> Send for LinkedHashMap<K, V, S> {}
+
+unsafe impl<K: Sync, V: Sync, S: Sync> Sync for LinkedHashMap<K, V, S> {}
 
 #[unsafe_destructor]
-impl<K, V> Drop for LinkedHashMap<K, V> {
+impl<K, V, S> Drop for LinkedHashMap<K, V, S> {
     fn drop(&mut self) {
         unsafe {
-            let node: Box<LinkedHashMapEntry<K, V>> = mem::transmute(self.head);
+            let node = Box::from_raw(self.head);
             // Prevent compiler from trying to drop the un-initialized field in the sigil node.
             let box internal_node = node;
             let LinkedHashMapEntry { next: _, prev: _, key: k, value: v } = internal_node;
@@ -477,14 +543,18 @@ pub struct Iter<'a, K: 'a, V: 'a> {
     head: *const LinkedHashMapEntry<K, V>,
     tail: *const LinkedHashMapEntry<K, V>,
     remaining: usize,
-    marker: marker::ContravariantLifetime<'a>,
+    marker: marker::PhantomData<(&'a K, &'a V)>,
 }
 
 pub struct IterMut<'a, K: 'a, V: 'a> {
     head: *mut LinkedHashMapEntry<K, V>,
     tail: *mut LinkedHashMapEntry<K, V>,
     remaining: usize,
-    marker: marker::ContravariantLifetime<'a>,
+    marker: marker::PhantomData<(&'a K, &'a mut V)>,
+}
+
+impl<'a, K, V> Clone for Iter<'a, K, V> {
+    fn clone(&self) -> Iter<'a, K, V> { Iter { ..*self } }
 }
 
 impl<'a, K, V> Iterator for Iter<'a, K, V> {
@@ -565,7 +635,11 @@ impl<'a, K, V> ExactSizeIterator for IterMut<'a, K, V> {}
 
 
 pub struct Keys<'a, K: 'a, V: 'a> {
-    inner: iter::Map<(&'a K, &'a V), &'a K, Iter<'a, K, V>, fn((&'a K, &'a V)) -> &'a K>
+    inner: iter::Map<Iter<'a, K, V>, fn((&'a K, &'a V)) -> &'a K>
+}
+
+impl<'a, K, V> Clone for Keys<'a, K, V> {
+    fn clone(&self) -> Keys<'a, K, V> { Keys { inner: self.inner.clone() } }
 }
 
 impl<'a, K, V> Iterator for Keys<'a, K, V> {
@@ -583,7 +657,11 @@ impl<'a, K, V> ExactSizeIterator for Keys<'a, K, V> {}
 
 
 pub struct Values<'a, K: 'a, V: 'a> {
-    inner: iter::Map<(&'a K, &'a V), &'a V, Iter<'a, K, V>, fn((&'a K, &'a V)) -> &'a V>
+    inner: iter::Map<Iter<'a, K, V>, fn((&'a K, &'a V)) -> &'a V>
+}
+
+impl<'a, K, V> Clone for Values<'a, K, V> {
+    fn clone(&self) -> Values<'a, K, V> { Values { inner: self.inner.clone() } }
 }
 
 impl<'a, K, V> Iterator for Values<'a, K, V> {
@@ -599,6 +677,17 @@ impl<'a, K, V> DoubleEndedIterator for Values<'a, K, V> {
 
 impl<'a, K, V> ExactSizeIterator for Values<'a, K, V> {}
 
+impl<'a, K: Hash + Eq, V, S: HashState> IntoIterator for &'a LinkedHashMap<K, V, S> {
+    type Item = (&'a K, &'a V);
+    type IntoIter = Iter<'a, K, V>;
+    fn into_iter(self) -> Iter<'a, K, V> { self.iter() }
+}
+
+impl<'a, K: Hash + Eq, V, S: HashState> IntoIterator for &'a mut LinkedHashMap<K, V, S> {
+    type Item = (&'a K, &'a mut V);
+    type IntoIter = IterMut<'a, K, V>;
+    fn into_iter(self) -> IterMut<'a, K, V> { self.iter_mut() }
+}
 
 #[cfg(test)]
 mod tests {
@@ -639,19 +728,19 @@ mod tests {
     }
 
     #[test]
-    fn test_show() {
+    fn test_debug() {
         let mut map = LinkedHashMap::new();
         assert_eq!(format!("{:?}", map), "{}");
         map.insert(1, 10);
         map.insert(2, 20);
         map.insert(3, 30);
-        assert_eq!(format!("{:?}", map), "{1i32: 10i32, 2i32: 20i32, 3i32: 30i32}");
+        assert_eq!(format!("{:?}", map), "{1: 10, 2: 20, 3: 30}");
         map.insert(2, 22);
-        assert_eq!(format!("{:?}", map), "{1i32: 10i32, 3i32: 30i32, 2i32: 22i32}");
+        assert_eq!(format!("{:?}", map), "{1: 10, 3: 30, 2: 22}");
         map.get(&3);
-        assert_eq!(format!("{:?}", map), "{1i32: 10i32, 3i32: 30i32, 2i32: 22i32}");
+        assert_eq!(format!("{:?}", map), "{1: 10, 3: 30, 2: 22}");
         map.get_refresh(&3);
-        assert_eq!(format!("{:?}", map), "{1i32: 10i32, 2i32: 22i32, 3i32: 30i32}");
+        assert_eq!(format!("{:?}", map), "{1: 10, 2: 22, 3: 30}");
         map.clear();
         assert_eq!(format!("{:?}", map), "{}");
     }

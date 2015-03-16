@@ -2,7 +2,8 @@
 
 #![warn(missing_docs)]
 
-use std::iter::Map;
+use std::fmt::{self, Debug};
+use std::iter::{IntoIterator, Map};
 use std::mem;
 use std::slice;
 
@@ -221,24 +222,24 @@ impl<K:PartialEq+Eq,V> LinearMap<K,V> {
 
 /// The iterator returned by `LinearMap::iter`.
 pub struct Iter<'a, K:'a, V:'a> {
-    iter: Map<(&'a (K, V)), (&'a K, &'a V), slice::Iter<'a, (K, V)>,
+    iter: Map<slice::Iter<'a, (K, V)>,
               fn(&'a (K, V)) -> (&'a K, &'a V)>,
 }
 
 /// The iterator returned by `LinearMap::iter_mut`.
 pub struct IterMut<'a, K:'a, V:'a> {
-    iter: Map<(&'a mut (K, V)), (&'a K, &'a mut V), slice::IterMut<'a, (K, V)>,
+    iter: Map<slice::IterMut<'a, (K, V)>,
               fn(&'a mut (K, V)) -> (&'a K, &'a mut V)>,
 }
 
 /// The iterator returned by `LinearMap::keys`.
 pub struct Keys<'a, K:'a, V:'a> {
-    iter: Map<(&'a K, &'a V), &'a K, Iter<'a, K, V>, fn((&'a K, &'a V)) -> &'a K>,
+    iter: Map<Iter<'a, K, V>, fn((&'a K, &'a V)) -> &'a K>,
 }
 
 /// The iterator returned by `LinearMap::values`.
 pub struct Values<'a, K:'a, V:'a> {
-    iter: Map<(&'a K, &'a V), &'a V, Iter<'a, K, V>, fn((&'a K, &'a V)) -> &'a V>,
+    iter: Map<Iter<'a, K, V>, fn((&'a K, &'a V)) -> &'a V>,
 }
 
 impl<'a, K:'a, V:'a> Iterator for Iter<'a, K, V> {
@@ -297,6 +298,33 @@ impl<'a, K:'a, V:'a> ExactSizeIterator for Iter   <'a, K, V> { }
 impl<'a, K:'a, V:'a> ExactSizeIterator for IterMut<'a, K, V> { }
 impl<'a, K:'a, V:'a> ExactSizeIterator for Keys   <'a, K, V> { }
 impl<'a, K:'a, V:'a> ExactSizeIterator for Values <'a, K, V> { }
+
+impl<'a, K:'a + Eq, V:'a> IntoIterator for &'a LinearMap<K, V> {
+    type Item = (&'a K, &'a V);
+    type IntoIter = Iter<'a, K, V>;
+    fn into_iter(self) -> Iter<'a, K, V> { self.iter() }
+}
+
+impl<'a, K:'a + Eq, V:'a> IntoIterator for &'a mut LinearMap<K, V> {
+    type Item = (&'a K, &'a mut V);
+    type IntoIter = IterMut<'a, K, V>;
+    fn into_iter(self) -> IterMut<'a, K, V> { self.iter_mut() }
+}
+
+impl<K, V> Debug for LinearMap<K, V> where K: Debug + Eq, V: Debug {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "{{"));
+
+        let mut it = self.iter();
+
+        if let Some((k, v)) = it.next() {
+            try!(write!(f, "{:?}: {:?}", k, v));
+            for (k, v) in it { try!(write!(f, ", {:?}: {:?}", k, v)); }
+        }
+
+        write!(f, "}}")
+    }
+}
 
 #[cfg(test)]
 mod test {

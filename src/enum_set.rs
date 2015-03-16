@@ -15,26 +15,24 @@
 
 use core::fmt;
 use core::hash;
-use core::marker::InvariantType;
+use core::marker::PhantomData;
 use core::num::Int;
 use core::u32;
-use std::iter;
+use std::iter::{self, IntoIterator};
 use std::ops;
 
 // FIXME(conventions): implement union family of methods? (general design may be wrong here)
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// A specialized set implementation to use enum types.
 pub struct EnumSet<E> {
     // We must maintain the invariant that no bits are set
     // for which no variant exists
     bits: u32,
-    invariant_type: InvariantType<E>,
+    phantom: PhantomData<*mut E>,
 }
 
-impl<E> Copy for EnumSet<E> {}
-
-impl<E:CLike+fmt::Show> fmt::Show for EnumSet<E> {
+impl<E:CLike+fmt::Debug> fmt::Debug for EnumSet<E> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(fmt, "{{"));
         let mut first = true;
@@ -49,8 +47,8 @@ impl<E:CLike+fmt::Show> fmt::Show for EnumSet<E> {
     }
 }
 
-impl<W:hash::Hasher+hash::Writer,E:CLike> hash::Hash<W> for EnumSet<E> {
-    fn hash(&self, state: &mut W) {
+impl<E: CLike> hash::Hash for EnumSet<E> {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.bits.hash(state);
     }
 }
@@ -100,13 +98,13 @@ impl<E:CLike> EnumSet<E> {
     }
 
     fn new_with_bits(bits: u32) -> EnumSet<E> {
-        EnumSet { bits: bits, invariant_type: InvariantType }
+        EnumSet { bits: bits, phantom: PhantomData }
     }
 
     /// Returns the number of elements in the given `EnumSet`.
     #[unstable = "matches collection reform specification, waiting for dust to settle"]
     pub fn len(&self) -> usize {
-        self.bits.count_ones()
+        self.bits.count_ones() as usize
     }
 
     /// Returns true if the `EnumSet` is empty.
@@ -212,11 +210,12 @@ impl<E:CLike> ops::BitXor for EnumSet<E> {
 pub struct Iter<E> {
     index: u32,
     bits: u32,
+    phantom: PhantomData<*mut E>,
 }
 
 impl<E:CLike> Iter<E> {
     fn new(bits: u32) -> Iter<E> {
-        Iter { index: 0, bits: bits }
+        Iter { index: 0, bits: bits, phantom: PhantomData }
     }
 }
 
@@ -238,13 +237,13 @@ impl<E:CLike> Iterator for Iter<E> {
         Some(elem)
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let exact = self.bits.count_ones();
+        let exact = self.bits.count_ones() as usize;
         (exact, Some(exact))
     }
 }
 
 impl<E:CLike> iter::FromIterator<E> for EnumSet<E> {
-    fn from_iter<I:Iterator<Item=E>>(iterator: I) -> EnumSet<E> {
+    fn from_iter<I: IntoIterator<Item=E>>(iterator: I) -> EnumSet<E> {
         let mut ret = EnumSet::new();
         ret.extend(iterator);
         ret
@@ -252,11 +251,17 @@ impl<E:CLike> iter::FromIterator<E> for EnumSet<E> {
 }
 
 impl<E:CLike> Extend<E> for EnumSet<E> {
-    fn extend<I: Iterator<Item=E>>(&mut self, mut iterator: I) {
-        for element in iterator {
+    fn extend<I: IntoIterator<Item=E>>(&mut self, iter: I) {
+        for element in iter {
             self.insert(element);
         }
     }
+}
+
+impl<'a, E:CLike> IntoIterator for &'a EnumSet<E> {
+    type Item = E;
+    type IntoIter = Iter<E>;
+    fn into_iter(self) -> Iter<E> { self.iter() }
 }
 
 #[cfg(test)]
@@ -266,7 +271,7 @@ mod test {
 
     use super::{EnumSet, CLike};
 
-    #[derive(PartialEq, Show)]
+    #[derive(PartialEq, Debug)]
     #[repr(u32)]
     enum Foo {
         A, B, C
@@ -291,7 +296,7 @@ mod test {
     }
 
     #[test]
-    fn test_show() {
+    fn test_debug() {
         let mut e = EnumSet::new();
         assert_eq!("{}", format!("{:?}", e));
         e.insert(A);
@@ -469,7 +474,7 @@ mod test {
     }
 
     #[test]
-    #[should_fail]
+    #[should_panic]
     fn test_overflow() {
         #[allow(dead_code)]
         #[repr(u32)]

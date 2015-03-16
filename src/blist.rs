@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
-use std::collections::{ring_buf, RingBuf};
-use std::iter;
+use std::collections::{vec_deque, VecDeque};
+use std::iter::{self, IntoIterator};
 use std::fmt;
-use std::hash::{Hash, Hasher, Writer};
+use std::hash::{Hash, Hasher};
 use std::num::Int;
 use traverse::Traversal;
 use proto::dlist::{self, DList};
@@ -22,7 +22,7 @@ use proto::dlist::{self, DList};
 /// `O(1)` time, though (assuming it takes `O(1)` time to allocate an array of size `B`).
 #[derive(Clone)]
 pub struct BList<T> {
-    list: DList<RingBuf<T>>,
+    list: DList<VecDeque<T>>,
     b: usize,
     len: usize,
 }
@@ -31,7 +31,7 @@ pub struct BList<T> {
 impl<T> BList<T> {
     /// Creates a new BList with a reasonable choice for B.
     pub fn new() -> BList<T> {
-        // RingBuf always has capacity = 2^k - 1, for some k;
+        // VecDeque always has capacity = 2^k - 1, for some k;
         // b = 6 gets us max_len = b + 1 = 7 = 2^3 - 1
         BList::with_b(6)
     }
@@ -217,11 +217,27 @@ impl<T> BList<T> {
     }
 }
 
+impl<'a, T> IntoIterator for &'a BList<T> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+    fn into_iter(self) -> Iter<'a, T> { self.iter() }
+}
 
+impl<'a, T> IntoIterator for &'a mut BList<T> {
+    type Item = &'a mut T;
+    type IntoIter = IterMut<'a, T>;
+    fn into_iter(self) -> IterMut<'a, T> { self.iter_mut() }
+}
+
+impl<T> IntoIterator for BList<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+    fn into_iter(self) -> IntoIter<T> { self.into_iter() }
+}
 
 /// Makes a new block for insertion in the list.
-fn make_block<T>(b: usize) -> RingBuf<T> {
-     RingBuf::with_capacity(block_max(b))
+fn make_block<T>(b: usize) -> VecDeque<T> {
+     VecDeque::with_capacity(block_max(b))
 }
 
 /// Gets the largest a block is allowed to become.
@@ -235,49 +251,33 @@ fn block_min(b: usize) -> usize {
     b - 1
 }
 
-/// Abstracts over getting the appropriate iterator from a T, &T, or &mut T
-trait Traverse<I> {
-    fn traverse(self) -> I;
-}
-
-impl<'a, T> Traverse<ring_buf::Iter<'a, T>> for &'a RingBuf<T> {
-    fn traverse(self) -> ring_buf::Iter<'a, T> { self.iter() }
-}
-
-impl<'a, T> Traverse<ring_buf::IterMut<'a, T>> for &'a mut RingBuf<T> {
-    fn traverse(self) -> ring_buf::IterMut<'a, T> { self.iter_mut() }
-}
-
-impl<T> Traverse<ring_buf::IntoIter<T>> for RingBuf<T> {
-    fn traverse(self) -> ring_buf::IntoIter<T> { self.into_iter() }
-}
-
 /// A by-ref iterator for a BList
 pub struct Iter<'a, T: 'a>
-    (AbsIter<dlist::Iter<'a, RingBuf<T>>, ring_buf::Iter<'a, T>>);
+    (AbsIter<dlist::Iter<'a, VecDeque<T>>, vec_deque::Iter<'a, T>>);
 /// A by-mut-ref iterator for a BList
 pub struct IterMut<'a, T: 'a>
-    (AbsIter<dlist::IterMut<'a, RingBuf<T>>, ring_buf::IterMut<'a, T>>);
+    (AbsIter<dlist::IterMut<'a, VecDeque<T>>, vec_deque::IterMut<'a, T>>);
 /// A by-value iterator for a BList
 pub struct IntoIter<T>
-    (AbsIter<dlist::IntoIter<RingBuf<T>>, ring_buf::IntoIter<T>>);
+    (AbsIter<dlist::IntoIter<VecDeque<T>>, vec_deque::IntoIter<T>>);
 
 /// An iterator that abstracts over all three kinds of ownership for a BList
-struct AbsIter<DListIter, RingBufIter> {
+struct AbsIter<DListIter, VecDequeIter> {
     list_iter: DListIter,
-    left_block_iter: Option<RingBufIter>,
-    right_block_iter: Option<RingBufIter>,
+    left_block_iter: Option<VecDequeIter>,
+    right_block_iter: Option<VecDequeIter>,
     len: usize,
 }
 
-impl<A,
-    RingBufIter: Iterator<Item=A>,
-    DListIter: Iterator<Item=T>,
-    T: Traverse<RingBufIter>> Iterator for AbsIter<DListIter, RingBufIter> {
-    type Item = A;
+impl<VecDequeIter, DListIter> Iterator for AbsIter<DListIter, VecDequeIter> where
+    VecDequeIter: Iterator,
+    DListIter: Iterator,
+    DListIter::Item: IntoIterator<IntoIter=VecDequeIter, Item=VecDequeIter::Item>
+{
+    type Item = VecDequeIter::Item;
     // I would like to thank all my friends and the fact that Iterator::next doesn't
     // borrow self, for this passing borrowck with minimal gymnastics
-    fn next(&mut self) -> Option<A> {
+    fn next(&mut self) -> Option<VecDequeIter::Item> {
         if self.len > 0 { self.len -= 1; }
         // Keep loopin' till we hit gold
         loop {
@@ -294,7 +294,7 @@ impl<A,
                     },
                     // Got new block from list iterator, make it the new left iterator
                     Some(block) => {
-                        let mut next_iter = block.traverse();
+                        let mut next_iter = block.into_iter();
                         let next = next_iter.next();
                         (next, Some(next_iter))
                     },
@@ -320,12 +320,14 @@ impl<A,
     }
 }
 
-impl<A,
-    RingBufIter: DoubleEndedIterator + Iterator<Item=A>,
-    DListIter: DoubleEndedIterator + Iterator<Item=T>,
-    T: Traverse<RingBufIter>> DoubleEndedIterator for AbsIter<DListIter, RingBufIter> {
+impl<VecDequeIter, DListIter> DoubleEndedIterator
+for AbsIter<DListIter, VecDequeIter> where
+    VecDequeIter: DoubleEndedIterator,
+    DListIter: DoubleEndedIterator,
+    DListIter::Item: IntoIterator<IntoIter=VecDequeIter, Item=VecDequeIter::Item>
+{
     // see `next` for details. This should be an exact mirror.
-    fn next_back(&mut self) -> Option<A> {
+    fn next_back(&mut self) -> Option<VecDequeIter::Item> {
         if self.len > 0 { self.len -= 1; }
         loop {
             let (ret, iter) = match self.right_block_iter.as_mut() {
@@ -335,7 +337,7 @@ impl<A,
                         Some(iter) => return iter.next_back(),
                     },
                     Some(block) => {
-                        let mut next_iter = block.traverse();
+                        let mut next_iter = block.into_iter();
                         let next = next_iter.next_back();
                         (next, Some(next_iter))
                     },
@@ -383,7 +385,6 @@ impl<T> DoubleEndedIterator for IntoIter<T> {
     fn next_back(&mut self) -> Option<T> { self.0.next_back() }
 }
 impl<T> ExactSizeIterator for IntoIter<T> {}
-
 
 pub struct Trav<'a, T: 'a> {
     list: &'a BList<T>,
@@ -433,18 +434,17 @@ impl<T> Traversal for IntoTrav<T> {
     }
 }
 
-
 impl<A> iter::FromIterator<A> for BList<A> {
-    fn from_iter<T: Iterator<Item=A>>(iterator: T) -> BList<A> {
+    fn from_iter<T: IntoIterator<Item=A>>(iter: T) -> BList<A> {
         let mut ret = BList::new();
-        ret.extend(iterator);
+        ret.extend(iter);
         ret
     }
 }
 
 impl<A> Extend<A> for BList<A> {
-    fn extend<T: Iterator<Item=A>>(&mut self, mut iterator: T) {
-        for elt in iterator { self.push_back(elt); }
+    fn extend<T: IntoIterator<Item=A>>(&mut self, iter: T) {
+        for elt in iter { self.push_back(elt); }
     }
 }
 
@@ -475,7 +475,7 @@ impl<A: Ord> Ord for BList<A> {
     }
 }
 
-impl<A: fmt::Show> fmt::Show for BList<A> {
+impl<A: fmt::Debug> fmt::Debug for BList<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         try!(write!(f, "["));
 
@@ -488,8 +488,8 @@ impl<A: fmt::Show> fmt::Show for BList<A> {
     }
 }
 
-impl<S: Hasher+Writer, A: Hash<S>> Hash<S> for BList<A> {
-    fn hash(&self, state: &mut S) {
+impl<A: Hash> Hash for BList<A> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
         self.len().hash(state);
         for elt in self.iter() {
             elt.hash(state);
@@ -718,9 +718,9 @@ mod test {
     }
 
     #[test]
-    fn test_show() {
+    fn test_debug() {
         let list: BList<i32> = range(0, 10).collect();
-        assert_eq!(format!("{:?}", list), "[0i32, 1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32]");
+        assert_eq!(format!("{:?}", list), "[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]");
 
         let list: BList<&str> = vec!["just", "one", "test", "more"].iter()
                                                                    .map(|&s| s)
